@@ -3,7 +3,13 @@ title: 'info'
 description: 'Display image metadata and properties'
 ---
 
-The `info` operation displays metadata about a PPM image file without modifying it. This is useful for inspecting image properties before processing.
+<Warning>
+**Implementation Status**: The `info` command is currently **not connected** in the main executables (`imtool-aos/main.cpp` and `imtool-soa/main.cpp`). While the function exists in `common/info.cpp` and is listed as a valid operation in the argument parser, it is not invoked when you run the command. This is a known limitation in the current source code.
+
+To use this functionality, you would need to modify the main.cpp files to add an `else if` clause that calls `common::info(params)` when the operation is "info".
+</Warning>
+
+The `info` operation is designed to display metadata about a PPM image file without modifying it. This is useful for inspecting image properties before processing.
 
 ## Syntax
 

@@ -63,13 +63,17 @@ imtool-<variant> <input> <output> <operation> [params]
 
 ## Available Commands
 
-| Command | Parameters | Description | Output Format |
-|---------|------------|-------------|---------------|
-| [compress](/commands/compress) | None | Optimizes color palette and creates indexed image | CPPM (C6) |
-| [resize](/commands/resize) | width height | Scales image using bilinear interpolation | PPM (P6) |
-| [maxlevel](/commands/maxlevel) | max_value | Extends color bit depth (8-bit to 16-bit) | PPM (P6) |
-| [cutfreq](/commands/cutfreq) | threshold | Removes least frequent colors (posterization) | PPM (P6) |
-| [info](/commands/info) | None | Displays image metadata | Terminal output |
+| Command | Parameters | Description | Output Format | Status |
+|---------|------------|-------------|---------------|--------|
+| [compress](/commands/compress) | None | Optimizes color palette and creates indexed image | CPPM (C6) | ✓ Fully implemented |
+| [resize](/commands/resize) | width height | Scales image using bilinear interpolation | PPM (P6) | ✓ Fully implemented |
+| [maxlevel](/commands/maxlevel) | max_value | Extends color bit depth (8-bit to 16-bit) | PPM (P6) | ✓ Fully implemented |
+| [cutfreq](/commands/cutfreq) | threshold | Removes least frequent colors (posterization) | PPM (P6) | ✓ Fully implemented |
+| [info](/commands/info) | None | Displays image metadata | Terminal output | ⚠️ Not connected in main.cpp |
+
+<Warning>
+The `info` command function exists in the codebase but is not invoked by the main executables. See the [info command page](/commands/info) for details.
+</Warning>
 
 ## Quick Examples
 
