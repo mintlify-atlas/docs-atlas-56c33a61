@@ -1,0 +1,147 @@
+---
+title: 'Commands Overview'
+description: 'Complete reference for all ImgTool image processing commands'
+---
+
+ImgTool is a C++ command-line tool for image processing operations on PPM (Portable Pixmap) format images. It comes in two variants optimized for different memory access patterns.
+
+## Variants
+
+ImgTool provides two implementations with identical functionality:
+
+<Tabs>
+  <Tab title="AOS (Array of Structures)">
+    **imtool-aos** stores pixel data as an array of RGB structures.
+    
+    Best for operations that process complete pixels together.
+    
+    ```cpp
+    struct Pixel {
+      int r, g, b;
+    };
+    std::vector<Pixel> pixels;
+    ```
+  </Tab>
+  
+  <Tab title="SOA (Structure of Arrays)">
+    **imtool-soa** stores pixel data as separate arrays for each color channel.
+    
+    Better cache locality for operations on individual color channels.
+    
+    ```cpp
+    struct Picture {
+      std::vector<uint8_t> r, g, b;
+      int width, height;
+    };
+    ```
+  </Tab>
+</Tabs>
+
+## General Syntax
+
+All commands follow this pattern:
+
+```bash
+imtool-<variant> <input> <output> <operation> [params]
+```
+
+<ParamField path="variant" type="string" required>
+  Either `aos` or `soa`
+</ParamField>
+
+<ParamField path="input" type="path" required>
+  Path to input PPM file (P6 format)
+</ParamField>
+
+<ParamField path="output" type="path" required>
+  Path for output file
+</ParamField>
+
+<ParamField path="operation" type="string" required>
+  One of: `compress`, `resize`, `maxlevel`, `cutfreq`, `info`
+</ParamField>
+
+## Available Commands
+
+| Command | Parameters | Description | Output Format |
+|---------|------------|-------------|---------------|
+| [compress](/commands/compress) | None | Optimizes color palette and creates indexed image | CPPM (C6) |
+| [resize](/commands/resize) | width height | Scales image using bilinear interpolation | PPM (P6) |
+| [maxlevel](/commands/maxlevel) | max_value | Extends color bit depth (8-bit to 16-bit) | PPM (P6) |
+| [cutfreq](/commands/cutfreq) | threshold | Removes least frequent colors (posterization) | PPM (P6) |
+| [info](/commands/info) | None | Displays image metadata | Terminal output |
+
+## Quick Examples
+
+<CodeGroup>
+```bash Compress
+./imtool-aos input/photo.ppm output/photo.cppm compress
+```
+
+```bash Resize
+./imtool-soa input/photo.ppm output/large.ppm resize 8000 8000
+```
+
+```bash Maxlevel
+./imtool-aos input/photo.ppm output/16bit.ppm maxlevel 65535
+```
+
+```bash Cutfreq
+./imtool-soa input/photo.ppm output/posterized.ppm cutfreq 100000
+```
+
+```bash Info
+./imtool-aos input/photo.ppm output/dummy.ppm info
+```
+</CodeGroup>
+
+## Input Format
+
+All commands accept PPM files in P6 (binary) format:
+
+```
+P6
+<width> <height>
+<max_color_value>
+<binary RGB data>
+```
+
+<Note>
+  ImgTool supports both 8-bit (max value 255) and 16-bit (max value 65535) color depths.
+</Note>
+
+## Performance Considerations
+
+- **AOS variant**: Better for operations that access all color channels simultaneously
+- **SOA variant**: Better cache performance for channel-specific operations
+- Both variants produce identical output
+- Use performance monitoring (e.g., `perf stat`) to compare for your specific workload
+
+## Error Handling
+
+<Warning>
+  - Minimum 4 command-line arguments required
+  - Input file must be valid P6 PPM format
+  - Output directory must exist
+  - Operation names are case-sensitive
+</Warning>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Compress" icon="file-zipper" href="/commands/compress">
+    Reduce file size with palette optimization
+  </Card>
+  
+  <Card title="Resize" icon="expand" href="/commands/resize">
+    Scale images with bilinear interpolation
+  </Card>
+  
+  <Card title="Maxlevel" icon="arrow-up" href="/commands/maxlevel">
+    Extend color depth to 16-bit
+  </Card>
+  
+  <Card title="Cutfreq" icon="palette" href="/commands/cutfreq">
+    Create posterization effects
+  </Card>
+</CardGroup>

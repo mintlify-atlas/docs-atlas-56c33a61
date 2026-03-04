@@ -1,0 +1,311 @@
+---
+title: Data Structures
+description: Core data structures for SOA image processing
+---
+
+## Overview
+
+The SOA implementation uses specialized structures to store and manipulate image data efficiently. These structures separate color channels into contiguous arrays for optimal memory access patterns.
+
+## ImageSOA
+
+The primary image structure with separated color channel vectors.
+
+### Definition
+
+```cpp imagesoa.hpp
+struct ImageSOA {
+  std::vector<int> r;  // Red component
+  std::vector<int> g;  // Green component
+  std::vector<int> b;  // Blue component
+  std::size_t width = 0;
+  std::size_t height = 0;
+};
+```
+
+### Members
+
+<ResponseField name="r" type="std::vector<int>">
+  Red color channel values for all pixels
+</ResponseField>
+
+<ResponseField name="g" type="std::vector<int>">
+  Green color channel values for all pixels
+</ResponseField>
+
+<ResponseField name="b" type="std::vector<int>">
+  Blue color channel values for all pixels
+</ResponseField>
+
+<ResponseField name="width" type="std::size_t" default="0">
+  Image width in pixels
+</ResponseField>
+
+<ResponseField name="height" type="std::size_t" default="0">
+  Image height in pixels
+</ResponseField>
+
+### Usage
+
+```cpp
+ImageSOA image;
+initializeImageSOA(image, 1920, 1080);
+
+// Access pixel at (x, y)
+size_t index = y * image.width + x;
+int red = image.r[index];
+int green = image.g[index];
+int blue = image.b[index];
+```
+
+---
+
+## Picture
+
+Lightweight image structure using 8-bit color channels.
+
+### Definition
+
+```cpp imagesoa.hpp
+struct Picture {
+  std::vector<uint8_t> r, g, b;
+  int width{}, height{};
+};
+```
+
+### Members
+
+<ResponseField name="r" type="std::vector<uint8_t>">
+  Red channel (8-bit values)
+</ResponseField>
+
+<ResponseField name="g" type="std::vector<uint8_t>">
+  Green channel (8-bit values)
+</ResponseField>
+
+<ResponseField name="b" type="std::vector<uint8_t>">
+  Blue channel (8-bit values)
+</ResponseField>
+
+<ResponseField name="width" type="int" default="0">
+  Image width in pixels
+</ResponseField>
+
+<ResponseField name="height" type="int" default="0">
+  Image height in pixels
+</ResponseField>
+
+### Usage
+
+```cpp
+Picture pic;
+if (loadPPM("input.ppm", pic)) {
+  // Process 8-bit image data
+  for (size_t i = 0; i < pic.r.size(); i++) {
+    pic.r[i] = std::min(255, pic.r[i] + 10);
+  }
+  savePPM("output.ppm", pic);
+}
+```
+
+---
+
+## Pixel
+
+Represents a single pixel with 8-bit RGB components.
+
+### Definition
+
+```cpp imagesoa.hpp
+struct Pixel {
+  uint8_t red;
+  uint8_t green;
+  uint8_t blue;
+};
+```
+
+### Members
+
+<ResponseField name="red" type="uint8_t">
+  Red component (0-255)
+</ResponseField>
+
+<ResponseField name="green" type="uint8_t">
+  Green component (0-255)
+</ResponseField>
+
+<ResponseField name="blue" type="uint8_t">
+  Blue component (0-255)
+</ResponseField>
+
+---
+
+## CutFreqParamsSOA
+
+Encapsulates parameters for the cutfreq color reduction operation.
+
+### Definition
+
+```cpp imagesoa.hpp
+struct CutFreqParamsSOA {
+  ImageSOA * image;
+  int n;
+
+  CutFreqParamsSOA(ImageSOA & img, int num)
+    : image(&img), n(num) { }
+};
+```
+
+### Members
+
+<ResponseField name="image" type="ImageSOA*">
+  Pointer to the image to process
+</ResponseField>
+
+<ResponseField name="n" type="int">
+  Number of least frequent colors to remove
+</ResponseField>
+
+### Constructor
+
+<ParamField path="img" type="ImageSOA&" required>
+  Reference to the ImageSOA to process
+</ParamField>
+
+<ParamField path="num" type="int" required>
+  Number of colors to remove (must be >= 1)
+</ParamField>
+
+### Usage
+
+```cpp
+ImageSOA image = readPPM("input.ppm", width, height);
+CutFreqParamsSOA params(image, 100);
+cutfreq(params);
+writePPM("output.ppm", image, width, height);
+```
+
+---
+
+## TupleHash
+
+Custom hash function for RGB color tuples, used in unordered maps.
+
+### Definition
+
+```cpp imagesoa.hpp
+struct TupleHash {
+  template <class T1, class T2, class T3>
+  std::size_t operator()(const std::tuple<T1, T2, T3>& tuple) const {
+    auto hash1 = std::hash<T1>{}(std::get<0>(tuple));
+    auto hash2 = std::hash<T2>{}(std::get<1>(tuple));
+    auto hash3 = std::hash<T3>{}(std::get<2>(tuple));
+    return hash1 ^ hash2 ^ hash3;
+  }
+};
+```
+
+### Purpose
+
+Enables use of `std::tuple<int, int, int>` as keys in unordered containers for efficient color frequency counting and lookup.
+
+### Usage
+
+```cpp
+std::unordered_map<std::tuple<int, int, int>, int, TupleHash> colorFrequency;
+
+auto color = std::make_tuple(r, g, b);
+colorFrequency[color]++;
+```
+
+---
+
+## image_size
+
+Simple structure for image dimensions.
+
+### Definition
+
+```cpp imagesoa.hpp
+struct image_size {
+  int width;
+  int height;
+};
+```
+
+### Members
+
+<ResponseField name="width" type="int">
+  Image width in pixels
+</ResponseField>
+
+<ResponseField name="height" type="int">
+  Image height in pixels
+</ResponseField>
+
+---
+
+## Constants
+
+Key constants used throughout the SOA implementation:
+
+```cpp imagesoa.hpp
+constexpr unsigned int MAX_COLOR_VALUE_8BIT = 255;
+constexpr int MAX_COLOR_VALUE = 255;
+constexpr int GRID_SIZE = 8;
+constexpr int RED_MULTIPLIER = 10000;
+constexpr int GREEN_MULTIPLIER = 100;
+```
+
+<ResponseField name="MAX_COLOR_VALUE_8BIT" type="unsigned int" default="255">
+  Maximum value for 8-bit color channels
+</ResponseField>
+
+<ResponseField name="MAX_COLOR_VALUE" type="int" default="255">
+  Default maximum color value
+</ResponseField>
+
+<ResponseField name="GRID_SIZE" type="int" default="8">
+  Grid cell size for spatial color optimization (32 buckets per channel)
+</ResponseField>
+
+<ResponseField name="RED_MULTIPLIER" type="int" default="10000">
+  Multiplier for red component in grid key calculation
+</ResponseField>
+
+<ResponseField name="GREEN_MULTIPLIER" type="int" default="100">
+  Multiplier for green component in grid key calculation
+</ResponseField>
+
+## Memory Efficiency
+
+SOA structures provide memory efficiency benefits:
+
+<CodeGroup>
+```cpp Memory Access Pattern
+// Sequential access to red channel
+for (size_t i = 0; i < image.r.size(); i++) {
+  process(image.r[i]);  // Cache-friendly: sequential access
+}
+
+// Compare with AOS:
+for (size_t i = 0; i < pixels.size(); i++) {
+  process(pixels[i].r);  // Less cache-friendly: stride access
+}
+```
+
+```cpp Channel Processing
+// SOA: Process entire channel at once
+void adjustBrightness(ImageSOA& img, int delta) {
+  for (auto& r : img.r) r = std::clamp(r + delta, 0, 255);
+  for (auto& g : img.g) g = std::clamp(g + delta, 0, 255);
+  for (auto& b : img.b) b = std::clamp(b + delta, 0, 255);
+  // Excellent cache behavior
+}
+```
+</CodeGroup>
+
+## Related
+
+- [Image & Photo Classes](/api/soa/image-class) - Main container classes
+- [SOA Operations](/api/soa/operations) - Functions using these structures

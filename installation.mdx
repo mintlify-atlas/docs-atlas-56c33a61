@@ -1,0 +1,246 @@
+---
+title: Installation
+description: Install and build ImgTool from source with CMake
+---
+
+ImgTool is built using CMake and requires C++20 support. Follow this guide to set up your development environment and build the project.
+
+## Prerequisites
+
+Before building ImgTool, ensure you have the following installed:
+
+### Required Dependencies
+
+<Steps>
+  <Step title="CMake 3.29 or higher">
+    ImgTool requires CMake version 3.29 or higher for the build system.
+    
+    ```bash
+    cmake --version
+    ```
+  </Step>
+
+  <Step title="C++20 Compatible Compiler">
+    You need a compiler with full C++20 support:
+    - GCC 10.0+
+    - Clang 12.0+
+    - MSVC 19.29+
+    
+    <CodeGroup>
+    ```bash GCC
+    g++ --version
+    ```
+    
+    ```bash Clang
+    clang++ --version
+    ```
+    </CodeGroup>
+  </Step>
+
+  <Step title="Google Test (Automatic)">
+    Google Test v1.15.2 is automatically fetched via CMake's FetchContent during the build process.
+    
+    <Info>
+      No manual installation required - CMake will download this dependency automatically.
+    </Info>
+  </Step>
+
+  <Step title="Microsoft GSL (Automatic)">
+    Microsoft Guidelines Support Library v4.0.0 is automatically fetched via CMake's FetchContent.
+    
+    <Info>
+      The GSL library provides modern C++ safety features and is downloaded automatically during build.
+    </Info>
+  </Step>
+
+  <Step title="clang-tidy (Optional)">
+    For code quality checks, install clang-tidy-19:
+    
+    ```bash
+    # Ubuntu/Debian
+    sudo apt install clang-tidy-19
+    
+    # macOS
+    brew install llvm
+    ```
+    
+    <Note>
+      clang-tidy integration is configured in CMakeLists.txt with `-format-style=file` and `-header-filter=.`
+    </Note>
+  </Step>
+</Steps>
+
+## Build Process
+
+### Quick Build (Using Script)
+
+The fastest way to build ImgTool is using the provided build script:
+
+```bash
+cd imtool-2024
+./run_and_build.sh
+```
+
+This script will:
+1. Configure the project with CMake in Release mode
+2. Build all executables and tests
+3. Place binaries in `build-release/`
+
+### Manual Build
+
+For more control over the build process:
+
+<Steps>
+  <Step title="Configure with CMake">
+    ```bash
+    cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release
+    ```
+    
+    <Info>
+      The `-S .` flag specifies the source directory, and `-B build-release` sets the build directory.
+    </Info>
+  </Step>
+
+  <Step title="Build the Project">
+    ```bash
+    cmake --build build-release
+    ```
+  </Step>
+
+  <Step title="Verify Build Output">
+    After building, your executables will be located at:
+    
+    ```bash
+    build-release/imtool-aos/imtool-aos  # AOS variant
+    build-release/imtool-soa/imtool-soa  # SOA variant
+    ```
+  </Step>
+</Steps>
+
+### Debug Build
+
+To build with debug symbols for development:
+
+```bash
+cmake -S . -B build-debug -DCMAKE_BUILD_TYPE=Debug
+cmake --build build-debug
+```
+
+## Compiler Flags
+
+ImgTool is compiled with strict compiler flags to ensure code quality:
+
+<CodeGroup>
+```text Warning Flags
+-Wall          # Enable all warnings
+-Wextra        # Enable extra warnings
+-Wpedantic     # Enable pedantic warnings
+-Werror        # Treat warnings as errors
+```
+
+```text Conversion Warnings
+-Wconversion      # Warn on implicit type conversions
+-Wsign-conversion # Warn on sign conversions
+```
+</CodeGroup>
+
+<Warning>
+  All compiler warnings are treated as errors (`-Werror`). Your code must compile cleanly.
+</Warning>
+
+## Build Targets
+
+The project includes multiple build targets:
+
+| Target | Description | Location |
+|--------|-------------|----------|
+| `imtool-aos` | AOS variant executable | `build-release/imtool-aos/` |
+| `imtool-soa` | SOA variant executable | `build-release/imtool-soa/` |
+| `utest-common` | Common utilities tests | `build-release/utest-common/` |
+| `unitest-imgaos` | AOS implementation tests | `build-release/utest-imgaos/` |
+| `utest-img-soa` | SOA implementation tests | `build-release/utest-img-soa/` |
+
+## Code Quality Integration
+
+### clang-tidy
+
+The project is configured with clang-tidy for static analysis:
+
+```cmake
+set(CMAKE_CXX_CLANG_TIDY clang-tidy-19;
+        -format-style=file;
+        -header-filter=.;)
+```
+
+<Note>
+  clang-tidy runs automatically during the build if installed. To disable it, comment out the `CMAKE_CXX_CLANG_TIDY` setting in CMakeLists.txt.
+</Note>
+
+## Testing the Build
+
+Verify your installation by running the unit tests:
+
+```bash
+# Run all tests
+cd build-release
+ctest
+
+# Or run individual test suites
+./utest-common/utest-common
+./utest-imgaos/unitest-imgaos
+./utest-img-soa/utest-img-soa
+```
+
+## Troubleshooting
+
+### CMake Version Too Old
+
+If you see:
+```
+CMake Error: CMake 3.29 or higher is required
+```
+
+Update CMake:
+```bash
+# Using pip
+pip install --upgrade cmake
+
+# Or download from cmake.org
+wget https://cmake.org/files/v3.29/cmake-3.29.0-linux-x86_64.sh
+```
+
+### Compiler Not Found
+
+If CMake cannot find your compiler:
+```bash
+cmake -S . -B build-release \
+  -DCMAKE_CXX_COMPILER=/usr/bin/g++-12 \
+  -DCMAKE_BUILD_TYPE=Release
+```
+
+### FetchContent Fails
+
+If Google Test or GSL download fails:
+1. Check your internet connection
+2. Try again - GitHub may be temporarily unavailable
+3. Or manually clone the dependencies:
+
+```bash
+mkdir -p _deps
+cd _deps
+git clone https://github.com/google/googletest --depth 1 --branch v1.15.2
+git clone https://github.com/microsoft/GSL --depth 1 --branch v4.0.0
+```
+
+## Next Steps
+
+Once you've successfully built ImgTool:
+
+<CardGroup cols={2}>
+  <Card title="Quickstart Guide" icon="rocket" href="/quickstart">
+    Learn how to use ImgTool with practical examples
+  </Card>
+  <Card title="Compress Command" icon="file-zipper" href="/commands/compress">
+    Reduce image file sizes with compression
+  </Card>
+</CardGroup>

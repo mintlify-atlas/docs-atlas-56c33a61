@@ -1,0 +1,251 @@
+---
+title: 'Pixel Structure'
+description: 'RGB pixel representation and comparison operators for AOS implementation'
+---
+
+## Pixel Struct
+
+The `Pixel` struct represents a single RGB color value in the AOS implementation.
+
+### Definition
+
+```cpp imageaos.hpp
+struct Pixel {
+  int r, g, b;
+
+  bool operator< (const Pixel& other) const {
+    return std::tie(r, g, b) < std::tie(other.r, other.g, other.b);
+  }
+
+  bool operator== (const Pixel& other) const {
+    return r==other.r && g==other.g && b==other.b;
+  }
+};
+```
+
+### Members
+
+<ResponseField name="r" type="int" required>
+  Red color component (0-255 for 8-bit, 0-65535 for 16-bit)
+</ResponseField>
+
+<ResponseField name="g" type="int" required>
+  Green color component (0-255 for 8-bit, 0-65535 for 16-bit)
+</ResponseField>
+
+<ResponseField name="b" type="int" required>
+  Blue color component (0-255 for 8-bit, 0-65535 for 16-bit)
+</ResponseField>
+
+<Note>
+  The struct uses `int` type to support both 8-bit (0-255) and 16-bit (0-65535) color values. Internally, it can also be used with `uint16_t` for memory efficiency.
+</Note>
+
+---
+
+## Comparison Operators
+
+### Less Than Operator
+
+```cpp imageaos.hpp
+bool operator< (const Pixel& other) const {
+  return std::tie(r, g, b) < std::tie(other.r, other.g, other.b);
+}
+```
+
+Enables lexicographic comparison of pixels, comparing red first, then green, then blue.
+
+**Usage in sorting:**
+
+```cpp
+std::vector<Pixel> pixels = {
+    {255, 0, 0},    // Red
+    {0, 255, 0},    // Green
+    {0, 0, 255}     // Blue
+};
+
+// Sort pixels by RGB values
+std::sort(pixels.begin(), pixels.end());
+// Result: Blue (0,0,255), Green (0,255,0), Red (255,0,0)
+```
+
+### Equality Operator
+
+```cpp imageaos.hpp
+bool operator== (const Pixel& other) const {
+  return r==other.r && g==other.g && b==other.b;
+}
+```
+
+Tests if two pixels have identical RGB values.
+
+**Usage in comparison:**
+
+```cpp
+Pixel color1 = {128, 128, 128};
+Pixel color2 = {128, 128, 128};
+Pixel color3 = {255, 255, 255};
+
+if (color1 == color2) {
+    std::cout << "Colors match" << std::endl;  // This will print
+}
+
+if (color1 == color3) {
+    std::cout << "Colors match" << std::endl;  // This won't print
+}
+```
+
+---
+
+## PixelHash Struct
+
+Custom hash function for using `Pixel` in unordered containers.
+
+### Definition
+
+```cpp imageaos.hpp
+struct PixelHash {
+  static constexpr std::size_t RED_SHIFT = 16;
+  static constexpr std::size_t GREEN_SHIFT = 8;
+
+  std::size_t operator()(const Pixel& pixel) const {
+    return (static_cast<std::size_t>(pixel.r) << RED_SHIFT) ^
+           (static_cast<std::size_t>(pixel.g) << GREEN_SHIFT) ^
+           static_cast<std::size_t>(pixel.b);
+  }
+};
+```
+
+### Algorithm
+
+The hash function combines RGB components using bit shifting and XOR operations:
+
+1. **Red component**: Shifted left by 16 bits
+2. **Green component**: Shifted left by 8 bits  
+3. **Blue component**: No shift
+4. **Combined**: XOR all three components
+
+<CodeGroup>
+```cpp Bit Pattern
+// For pixel RGB(128, 64, 32):
+Red:   128 << 16 = 0x00800000
+Green:  64 <<  8 = 0x00004000
+Blue:   32       = 0x00000020
+XOR Result:        0x00804020
+```
+
+```cpp Usage Example
+std::unordered_map<Pixel, int, PixelHash> colorFrequency;
+
+Pixel color = {255, 128, 64};
+colorFrequency[color]++;  // Uses PixelHash for hashing
+```
+</CodeGroup>
+
+---
+
+## Usage in Algorithms
+
+### Color Frequency Counting
+
+```cpp imageaos.cpp:173
+std::unordered_map<Pixel, int, PixelHash> 
+countColorFrequencyWithParams(const CutFreqParams& params) {
+  std::unordered_map<Pixel, int, PixelHash> frequencyMap;
+
+  for (const auto& pixel : params.image) {
+    frequencyMap[pixel]++;
+  }
+
+  return frequencyMap;
+}
+```
+
+**Example:**
+
+```cpp
+std::vector<Pixel> image = {
+    {255, 0, 0}, {255, 0, 0},  // Red appears twice
+    {0, 255, 0},                // Green appears once
+    {0, 0, 255}                 // Blue appears once
+};
+
+CutFreqParams params(image, {.width = 2, .height = 2}, 1);
+auto frequency = countColorFrequencyWithParams(params);
+
+// frequency[{255, 0, 0}] == 2
+// frequency[{0, 255, 0}] == 1
+// frequency[{0, 0, 255}] == 1
+```
+
+### Color Tables
+
+```cpp imageaos.cpp:27
+std::map<Pixel, uint32_t> getColors(std::vector<Pixel>& input, Image& picture) {
+  std::map<Pixel, uint32_t> color_table;
+
+  for (const auto& color : input) {
+    if (color_table.find(color) == color_table.end()) {
+      color_table[color] = 0;
+      picture.colors++;
+    }
+  }
+  
+  uint32_t indice = 0;
+  for (auto [color, index] : color_table) {
+    color_table[color] = indice;
+    indice++;
+  }
+
+  return color_table;
+}
+```
+
+**Example:**
+
+```cpp
+Image img({.width = 100, .height = 100}, 255);
+std::map<Pixel, uint32_t> colorMap = getColors(img.pixels, img);
+
+// colorMap maps each unique pixel to an index
+// img.colors contains the total number of unique colors
+```
+
+### Unordered Sets
+
+```cpp
+std::unordered_set<Pixel, PixelHash> uniqueColors;
+
+for (const auto& pixel : image) {
+    uniqueColors.insert(pixel);
+}
+
+std::cout << "Unique colors: " << uniqueColors.size() << std::endl;
+```
+
+---
+
+## Constants
+
+```cpp imageaos.hpp
+constexpr int MAX_COLOR_VALUE = 255;
+constexpr int MAX_COLOR_VALUE_EXTENDED = 65535;
+```
+
+<ResponseField name="MAX_COLOR_VALUE" type="constexpr int">
+  Maximum value for 8-bit color channels (255)
+</ResponseField>
+
+<ResponseField name="MAX_COLOR_VALUE_EXTENDED" type="constexpr int">
+  Maximum value for 16-bit color channels (65535)
+</ResponseField>
+
+### Usage Example
+
+```cpp
+Pixel clampedPixel = {
+    std::clamp(value.r, 0, MAX_COLOR_VALUE),
+    std::clamp(value.g, 0, MAX_COLOR_VALUE),
+    std::clamp(value.b, 0, MAX_COLOR_VALUE)
+};
+```

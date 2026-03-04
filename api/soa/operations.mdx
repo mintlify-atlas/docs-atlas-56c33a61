@@ -1,0 +1,548 @@
+---
+title: Operations
+description: Image processing functions optimized for SOA layout
+---
+
+## Overview
+
+SOA operations are optimized to take advantage of separated color channels for improved cache locality and vectorization potential. These functions process entire color channels sequentially, maximizing CPU cache efficiency.
+
+## Core Operations
+
+### compress()
+
+Compresses a PPM image by creating a color table and replacing pixels with indices.
+
+```cpp imagesoa.hpp
+void compress(progargsCommon::parameters_files params);
+```
+
+<ParamField path="params" type="progargsCommon::parameters_files" required>
+  Structure containing input and output file paths
+</ParamField>
+
+#### Implementation Details
+
+The function:
+1. Reads the input PPM file (P6 format)
+2. Extracts unique colors and builds a color map
+3. Writes output in C6 compressed format with:
+   - Color table (unique RGB values)
+   - Pixel indices (references to color table)
+
+```cpp imagesoa.cpp
+void compress(progargsCommon::parameters_files params) {
+  std::ifstream input(params.input_file, std::ios::binary);
+  std::ofstream output(params.output_file, std::ios::binary);
+  
+  // Read header
+  std::string idn;
+  int width, height, max_color;
+  input >> idn >> width >> height >> max_color;
+  
+  // Create SOA image
+  image_size const size_init(width, height);
+  Image image(size_init, max_color);
+  
+  // Read pixels into separate channels
+  for(std::size_t i = 0; i < image.red.size(); i++) {
+    if (image.max_color <= 255) {
+      image.red[i] = binario::read_binary<uint8_t>(input);
+      image.green[i] = binario::read_binary<uint8_t>(input);
+      image.blue[i] = binario::read_binary<uint8_t>(input);
+    } else {
+      image.red[i] = binario::read_binary<uint16_t>(input);
+      image.green[i] = binario::read_binary<uint16_t>(input);
+      image.blue[i] = binario::read_binary<uint16_t>(input);
+    }
+  }
+  
+  // Build color table and write compressed output
+  std::map<std::tuple<uint16_t, uint16_t, uint16_t>, uint32_t> color_list = getColors(image);
+  output << "C6 " << width << " " << height << " " << max_color << " " << image.n_colors << "\n";
+  write_color_table(image, color_list, params.output_file);
+  write_pixels(image, color_list, params.output_file);
+}
+```
+
+---
+
+### resizeImage()
+
+Resizes an image using bilinear interpolation on SOA data.
+
+```cpp imagesoa.hpp
+Picture resizeImage(Picture const & original, int newWidth, int newHeight);
+```
+
+<ParamField path="original" type="Picture const&" required>
+  Source image to resize
+</ParamField>
+
+<ParamField path="newWidth" type="int" required>
+  Target width in pixels
+</ParamField>
+
+<ParamField path="newHeight" type="int" required>
+  Target height in pixels
+</ParamField>
+
+<ResponseField name="return" type="Picture">
+  Resized image with new dimensions
+</ResponseField>
+
+#### SOA Advantage
+
+Processing channels separately allows for better vectorization:
+
+```cpp imagesoa.cpp
+Picture resizeImage(Picture const & original, int newWidth, int newHeight) {
+  Picture resized;
+  resized.width  = newWidth;
+  resized.height = newHeight;
+  resized.r.resize(static_cast<std::size_t>(newWidth * newHeight));
+  resized.g.resize(static_cast<std::size_t>(newWidth * newHeight));
+  resized.b.resize(static_cast<std::size_t>(newHeight * newWidth));
+
+  for (std::size_t y_ = 0; y_ < static_cast<std::size_t>(newHeight); ++y_) {
+    for (std::size_t x_ = 0; x_ < static_cast<std::size_t>(newWidth); ++x_) {
+      auto const originalX = static_cast<double>(x_) * 
+        (static_cast<double>(original.width - 1) / static_cast<double>(newWidth - 1));
+      auto const originalY = static_cast<double>(y_) * 
+        (static_cast<double>(original.height - 1) / static_cast<double>(newHeight - 1));
+
+      Pixel color{};
+      bilinearInterpolate(original, originalX, originalY, color);
+
+      std::size_t const idx = (y_ * static_cast<std::size_t>(newWidth)) + x_;
+      resized.r[idx] = color.red;
+      resized.g[idx] = color.green;
+      resized.b[idx] = color.blue;
+    }
+  }
+
+  return resized;
+}
+```
+
+---
+
+### maxlevel()
+
+Adjusts the maximum color value by scaling all pixel values proportionally.
+
+```cpp imagesoa.hpp
+void maxlevel(Photo& photo, unsigned int newMaxValue);
+```
+
+<ParamField path="photo" type="Photo&" required>
+  Image to modify (modified in place)
+</ParamField>
+
+<ParamField path="newMaxValue" type="unsigned int" required>
+  New maximum color value (e.g., 255 or 65535)
+</ParamField>
+
+#### Implementation
+
+```cpp imagesoa.cpp
+void maxlevel(Photo& photo, unsigned int newMaxValue) {
+  double const scaleFactor = static_cast<double>(newMaxValue) / photo.maxColorValue;
+  
+  // SOA optimization: Process each channel sequentially
+  for (size_t i = 0; i < photo.red.size(); ++i) {
+    photo.red[i] = static_cast<unsigned int>(photo.red[i] * scaleFactor);
+    photo.green[i] = static_cast<unsigned int>(photo.green[i] * scaleFactor);
+    photo.blue[i] = static_cast<unsigned int>(photo.blue[i] * scaleFactor);
+  }
+  
+  photo.maxColorValue = newMaxValue;
+}
+```
+
+**SOA Benefit**: Sequential access to each channel array improves cache hit rate compared to stride access in AOS layout.
+
+---
+
+### cutfreq()
+
+Removes the least frequent colors from an image by replacing them with their nearest remaining colors.
+
+```cpp imagesoa.hpp
+void cutfreq(CutFreqParamsSOA const & params);
+```
+
+<ParamField path="params" type="CutFreqParamsSOA const&" required>
+  Parameters containing the image and number of colors to remove
+</ParamField>
+
+#### Process
+
+1. Count color frequency in the image
+2. Identify the N least frequent colors
+3. Build optimized grid for spatial lookup
+4. Find closest replacement color for each removed color
+5. Replace pixels with new colors
+
+```cpp imagesoa.cpp
+void cutfreq(CutFreqParamsSOA const & params) {
+  if (params.n < 1) {
+    throw std::invalid_argument("Error: Invalid cutfreq: " + std::to_string(params.n));
+  }
+  
+  // Count frequencies
+  auto frequencyMap = countColorFrequencySOA(params);
+  auto colorsToRemove = getLeastFrequentColors(frequencyMap, params.n);
+  
+  // Build spatial grid for fast neighbor lookup
+  std::unordered_set<std::tuple<int, int, int>, TupleHash> const 
+    colorsToRemoveSet(colorsToRemove.begin(), colorsToRemove.end());
+  auto grid = buildGridOptimized(*params.image, GRID_SIZE);
+  
+  // Build replacement map
+  std::unordered_map<std::tuple<int, int, int>, std::tuple<int, int, int>, TupleHash> 
+    replacementMap;
+  for (const auto& color : colorsToRemove) {
+    auto closestColor = findClosestColorOptimized(color, grid, GRID_SIZE);
+    replacementMap[color] = closestColor;
+  }
+
+  // Apply replacements - SOA optimization
+  for (std::size_t i = 0; i < params.image->width * params.image->height; ++i) {
+    auto pixel = std::make_tuple(params.image->r[i], 
+                                  params.image->g[i], 
+                                  params.image->b[i]);
+    auto iter = replacementMap.find(pixel);
+    if (iter != replacementMap.end()) {
+      auto newColor = iter->second;
+      params.image->r[i] = std::get<0>(newColor);
+      params.image->g[i] = std::get<1>(newColor);
+      params.image->b[i] = std::get<2>(newColor);
+    }
+  }
+}
+```
+
+---
+
+## Helper Functions
+
+### I/O Operations
+
+#### readPPM()
+
+Reads a PPM image into SOA format.
+
+```cpp
+ImageSOA readPPM(const std::string & filename, 
+                 std::size_t & width, 
+                 std::size_t & height);
+```
+
+<ParamField path="filename" type="const std::string&" required>
+  Path to input PPM file
+</ParamField>
+
+<ParamField path="width" type="std::size_t&" required>
+  Output: image width
+</ParamField>
+
+<ParamField path="height" type="std::size_t&" required>
+  Output: image height
+</ParamField>
+
+<ResponseField name="return" type="ImageSOA">
+  Loaded image in SOA format
+</ResponseField>
+
+#### writePPM()
+
+Writes an SOA image to PPM format.
+
+```cpp
+void writePPM(const std::string & filename, 
+              const ImageSOA & image, 
+              std::size_t width, 
+              std::size_t height);
+```
+
+<ParamField path="filename" type="const std::string&" required>
+  Output file path
+</ParamField>
+
+<ParamField path="image" type="const ImageSOA&" required>
+  Image data in SOA format
+</ParamField>
+
+<ParamField path="width" type="std::size_t" required>
+  Image width
+</ParamField>
+
+<ParamField path="height" type="std::size_t" required>
+  Image height
+</ParamField>
+
+#### loadPPM() / savePPM()
+
+Load and save operations for the Picture structure.
+
+```cpp
+bool loadPPM(std::string const & filename, Picture & image);
+bool savePPM(std::string const & filename, Picture const & image);
+```
+
+---
+
+### Color Analysis
+
+#### countColorFrequencySOA()
+
+Counts occurrence of each unique color.
+
+```cpp imagesoa.hpp
+std::unordered_map<std::tuple<int, int, int>, int, TupleHash> 
+countColorFrequencySOA(CutFreqParamsSOA const & params);
+```
+
+```cpp imagesoa.cpp
+std::unordered_map<std::tuple<int, int, int>, int, TupleHash> 
+countColorFrequencySOA(CutFreqParamsSOA const & params) {
+  std::unordered_map<std::tuple<int, int, int>, int, TupleHash> frequencyMap;
+
+  for (std::size_t i = 0; i < params.image->width * params.image->height; ++i) {
+    auto color = std::make_tuple(params.image->r[i], 
+                                  params.image->g[i], 
+                                  params.image->b[i]);
+    frequencyMap[color]++;
+  }
+
+  return frequencyMap;
+}
+```
+
+#### getLeastFrequentColors()
+
+Identifies the N least frequent colors, with tiebreaking by BGR values.
+
+```cpp imagesoa.hpp
+std::vector<std::tuple<int, int, int>> 
+getLeastFrequentColors(
+  std::unordered_map<std::tuple<int, int, int>, int, TupleHash> const & frequencyMap, 
+  int n);
+```
+
+---
+
+### Spatial Optimization
+
+#### buildGridOptimized()
+
+Builds a spatial grid for fast color neighbor lookup using a 3D grid in RGB space.
+
+```cpp imagesoa.hpp
+std::unordered_map<int, std::vector<std::tuple<int, int, int>>> 
+buildGridOptimized(const ImageSOA& image, int gridSize);
+```
+
+<ParamField path="image" type="const ImageSOA&" required>
+  Source image
+</ParamField>
+
+<ParamField path="gridSize" type="int" required>
+  Grid cell size (typically 8, creating 32x32x32 buckets)
+</ParamField>
+
+**Grid Key Calculation**: `key = (r/8)*10000 + (g/8)*100 + (b/8)`
+
+```cpp imagesoa.cpp
+std::unordered_map<int, std::vector<std::tuple<int, int, int>>> 
+buildGridOptimized(const ImageSOA& image, int gridSize) {
+  std::unordered_map<int, std::vector<std::tuple<int, int, int>>> grid;
+  
+  for (std::size_t i = 0; i < image.width * image.height; ++i) {
+    int const rIndex = image.r[i] / gridSize;
+    int const gIndex = image.g[i] / gridSize;
+    int const bIndex = image.b[i] / gridSize;
+    int const key = (rIndex * RED_MULTIPLIER) + 
+                    (gIndex * GREEN_MULTIPLIER) + bIndex;
+    grid[key].emplace_back(image.r[i], image.g[i], image.b[i]);
+  }
+  
+  return grid;
+}
+```
+
+#### findClosestColorOptimized()
+
+Finds the nearest color using grid-based spatial search.
+
+```cpp imagesoa.hpp
+std::tuple<int, int, int> 
+findClosestColorOptimized(
+  const std::tuple<int, int, int>& color, 
+  const std::unordered_map<int, std::vector<std::tuple<int, int, int>>>& grid, 
+  int gridSize);
+```
+
+Searches a 3x3x3 neighborhood in grid space (27 cells) for the closest matching color using Euclidean distance.
+
+---
+
+### Interpolation
+
+#### bilinearInterpolate()
+
+Performs bilinear interpolation for image resizing.
+
+```cpp imagesoa.hpp
+void bilinearInterpolate(const Picture& original, 
+                         double xcoord, 
+                         double ycoord, 
+                         Pixel& color);
+```
+
+<ParamField path="original" type="const Picture&" required>
+  Source image
+</ParamField>
+
+<ParamField path="xcoord" type="double" required>
+  X coordinate (fractional)
+</ParamField>
+
+<ParamField path="ycoord" type="double" required>
+  Y coordinate (fractional)
+</ParamField>
+
+<ParamField path="color" type="Pixel&" required>
+  Output: interpolated pixel color
+</ParamField>
+
+---
+
+## SOA-Specific Optimizations
+
+### Memory Access Patterns
+
+<Tabs>
+  <Tab title="Channel-wise Processing">
+    ```cpp
+    // Optimal for SOA: process entire channel
+    void adjustChannel(std::vector<int>& channel, int adjustment) {
+      for (auto& value : channel) {
+        value = std::clamp(value + adjustment, 0, 255);
+      }
+      // Sequential access = excellent cache utilization
+    }
+    
+    adjustChannel(image.r, brightness);
+    adjustChannel(image.g, brightness);
+    adjustChannel(image.b, brightness);
+    ```
+  </Tab>
+  
+  <Tab title="Vectorization Potential">
+    ```cpp
+    // Compiler can auto-vectorize with SIMD
+    void scaleChannel(std::vector<int>& channel, double factor) {
+      // This loop is easy to vectorize:
+      // - Contiguous memory access
+      // - No data dependencies between iterations
+      // - Simple arithmetic operations
+      for (size_t i = 0; i < channel.size(); i++) {
+        channel[i] = static_cast<int>(channel[i] * factor);
+      }
+    }
+    ```
+  </Tab>
+  
+  <Tab title="Cache Efficiency">
+    ```cpp
+    // SOA: Process 64 red values in a cache line
+    // (assuming 4-byte ints, 256-byte cache line)
+    for (size_t i = 0; i < image.r.size(); i++) {
+      processRed(image.r[i]);  // Next 63 values already in cache
+    }
+    
+    // vs AOS: Only ~21 pixels in a cache line
+    // (12 bytes per pixel with int RGB)
+    ```
+  </Tab>
+</Tabs>
+
+### Performance Comparison
+
+<CodeGroup>
+```cpp SOA: maxlevel() - Cache-Friendly
+// Process 1 million pixels
+for (size_t i = 0; i < 1000000; ++i) {
+  photo.red[i] *= scaleFactor;    // Sequential access
+}
+for (size_t i = 0; i < 1000000; ++i) {
+  photo.green[i] *= scaleFactor;  // Sequential access
+}
+for (size_t i = 0; i < 1000000; ++i) {
+  photo.blue[i] *= scaleFactor;   // Sequential access
+}
+// Typical: 3-5x faster due to cache efficiency
+```
+
+```cpp AOS: maxlevel() - Stride Access
+// Process 1 million pixels
+for (size_t i = 0; i < 1000000; ++i) {
+  pixels[i].r *= scaleFactor;  // Stride of 12 bytes
+  pixels[i].g *= scaleFactor;  // More cache misses
+  pixels[i].b *= scaleFactor;
+}
+// Cache efficiency depends on pixel size
+```
+</CodeGroup>
+
+## Usage Examples
+
+### Complete Workflow
+
+```cpp
+#include "imgsoa/imagesoa.hpp"
+
+using namespace imgsoa;
+
+int main() {
+  // Load image
+  std::size_t width, height;
+  ImageSOA image = readPPM("input.ppm", width, height);
+  
+  // Remove 100 least frequent colors
+  CutFreqParamsSOA params(image, 100);
+  cutfreq(params);
+  
+  // Save result
+  writePPM("output.ppm", image, width, height);
+  
+  return 0;
+}
+```
+
+### Resize with Maxlevel
+
+```cpp
+Photo photo;
+if (loadPhoto("input.ppm", photo)) {
+  // Adjust color depth
+  maxlevel(photo, 65535);
+  
+  // Convert to Picture for resizing
+  Picture pic;
+  pic.width = photo.width;
+  pic.height = photo.height;
+  // ... copy data ...
+  
+  // Resize
+  Picture resized = resizeImage(pic, 1920, 1080);
+  savePPM("output.ppm", resized);
+}
+```
+
+## Related
+
+- [Image & Photo Classes](/api/soa/image-class) - Container types
+- [SOA Structures](/api/soa/structures) - Data structures used by operations

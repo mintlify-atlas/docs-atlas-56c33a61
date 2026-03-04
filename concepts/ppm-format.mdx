@@ -1,0 +1,431 @@
+---
+title: PPM Image Format
+description: Understanding PPM (P3/P6) and CPPM formats used by ImgTool
+---
+
+## Overview
+
+ImgTool processes images in the PPM (Portable Pixmap) format, a simple uncompressed raster image format. The tool also introduces CPPM (Compressed PPM), a custom format that reduces file size through color palette optimization.
+
+## PPM Format Basics
+
+PPM is part of the Netpbm format family and stores images as raw RGB pixel data. It's human-readable (in P3 mode) and widely supported, making it ideal for educational and research purposes.
+
+### Key Characteristics
+
+- **Uncompressed**: No lossy compression, preserves exact pixel values
+- **Platform-independent**: Works across all operating systems
+- **Simple structure**: Easy to parse and generate
+- **Two variants**: ASCII (P3) and Binary (P6)
+
+## P3 Format (ASCII)
+
+### Structure
+
+P3 stores pixel data as human-readable ASCII text:
+
+```text
+P3
+# Optional comment
+<width> <height>
+<max_color_value>
+<R> <G> <B> <R> <G> <B> ...
+```
+
+### Example: 2x2 Red Image
+
+```text
+P3
+2 2
+255
+255 0 0  255 0 0
+255 0 0  255 0 0
+```
+
+This represents:
+```
+🟥 🟥
+🟥 🟥
+```
+
+<Note>
+P3 format is useful for debugging and small images but creates very large files. A 1920×1080 image can be over 15MB in P3 format.
+</Note>
+
+## P6 Format (Binary)
+
+### Structure
+
+P6 stores pixel data as binary bytes, drastically reducing file size:
+
+```text
+P6
+<width> <height>
+<max_color_value>
+<binary RGB data>
+```
+
+### Header Reading (from imageaos.cpp:306-315)
+
+```cpp
+bool readHeader(std::ifstream& file, Photo& photo) {
+    file >> photo.magicNumber 
+         >> photo.width 
+         >> photo.height 
+         >> photo.maxColorValue;
+    file.ignore(1); // Ignore the newline character after maxColorValue
+
+    if (photo.magicNumber != "P6") {
+        std::cerr << "Error: formato de imagen no valido.\n";
+        return false;
+    }
+    return true;
+}
+```
+
+### Binary Pixel Reading
+
+ImgTool supports both 8-bit (0-255) and 16-bit (0-65535) color depths:
+
+<CodeGroup>
+```cpp AOS: Reading Pixels (imageaos.cpp:317-324)
+template<typename T>
+void readPixels(std::ifstream& file, Photo& photo) {
+    for (auto& pixel : photo.pixels) {
+        pixel.r = binario::read_binary<T>(file);
+        pixel.g = binario::read_binary<T>(file);
+        pixel.b = binario::read_binary<T>(file);
+    }
+}
+
+// Usage:
+if (photo.maxColorValue <= MAX_COLOR_VALUE) {
+    readPixels<unsigned char>(file, photo);  // 8-bit
+} else {
+    readPixels<unsigned short>(file, photo); // 16-bit
+}
+```
+
+```cpp SOA: Reading Pixels (imagesoa.cpp:304-311)
+template<typename T>
+void readPixels(std::ifstream& file, size_t pixelCount, Photo &photo) {
+    for (size_t i = 0; i < pixelCount; ++i) {
+        photo.red[i] = binario::read_binary<T>(file);
+        photo.green[i] = binario::read_binary<T>(file);
+        photo.blue[i] = binario::read_binary<T>(file);
+    }
+}
+```
+</CodeGroup>
+
+<Info>
+The template-based reading allows the same code to handle both 8-bit and 16-bit images seamlessly.
+</Info>
+
+## Writing PPM Files
+
+### P6 Binary Output (imageaos.cpp:326-350)
+
+```cpp
+bool savePhoto(const Photo& photo, const std::string& filename) {
+    std::ofstream file(filename, std::ios::binary);
+    if (!file) {
+        std::cerr << "Error al abrir el fichero " << filename << '\n';
+        return false;
+    }
+
+    // Write header
+    file << photo.magicNumber << "\n" 
+         << photo.width << " " << photo.height << "\n" 
+         << photo.maxColorValue << "\n";
+
+    // Write pixel data
+    if (photo.maxColorValue <= MAX_COLOR_VALUE) {
+        for (const auto& pixel : photo.pixels) {
+            binario::write_birary(file, static_cast<unsigned char>(pixel.r));
+            binario::write_birary(file, static_cast<unsigned char>(pixel.g));
+            binario::write_birary(file, static_cast<unsigned char>(pixel.b));
+        }
+    } else {
+        for (const auto& pixel : photo.pixels) {
+            binario::write_birary(file, static_cast<unsigned short>(pixel.r));
+            binario::write_birary(file, static_cast<unsigned short>(pixel.g));
+            binario::write_birary(file, static_cast<unsigned short>(pixel.b));
+        }
+    }
+
+    return true;
+}
+```
+
+## CPPM Format (Custom Compressed)
+
+### Motivation
+
+Many images use far fewer colors than the theoretical maximum (16.7 million for 24-bit RGB). CPPM exploits this by:
+
+1. Building a **color palette** of unique colors
+2. Storing pixels as **indices** into the palette
+3. Achieving significant compression for images with limited color palettes
+
+### CPPM Structure
+
+```text
+C6
+<width> <height> <max_color_value> <num_colors>
+<color_table>
+<pixel_indices>
+```
+
+### Header Format
+
+- **Magic number**: `C6` (indicates Compressed PPM format)
+- **Dimensions**: Width and height in pixels
+- **max_color_value**: Maximum value for RGB components (255 or 65535)
+- **num_colors**: Number of unique colors in the palette
+
+### Color Table Generation (imageaos.cpp:27-45)
+
+```cpp
+std::map<Pixel, uint32_t> getColors(std::vector<Pixel>& input, Image & picture) {
+    std::map<Pixel, uint32_t> color_table;
+
+    // Find all unique colors
+    for (const auto& color : input) {
+        if (color_table.find(color) == color_table.end()) {
+            color_table[color] = 0;
+            picture.colors++;
+        }
+    }
+    
+    // Assign sequential indices
+    uint32_t indice = 0;
+    for (auto [color, index] : color_table) {
+        color_table[color] = indice;
+        indice++;
+    }
+
+    return color_table;
+}
+```
+
+### Writing CPPM Files (imageaos.cpp:47-82)
+
+```cpp
+void write_dataCPPM(Image & picture, 
+                    std::map<Pixel, uint32_t> & colorlist,
+                    std::string const & output_file) {
+    std::ofstream file(output_file, std::ios::binary);
+    
+    // Write header
+    file << "C6 " 
+         << picture.size.width << " " 
+         << picture.size.height << " " 
+         << picture.max_color << " "
+         << picture.colors << "\n";
+    
+    // Write color table
+    for (const auto& [color, index] : colorlist) {
+        if (picture.max_color <= 255) {
+            binario::write_birary(file, static_cast<uint8_t>(color.r));
+            binario::write_birary(file, static_cast<uint8_t>(color.g));
+            binario::write_birary(file, static_cast<uint8_t>(color.b));
+        } else {
+            binario::write_birary(file, color.r);
+            binario::write_birary(file, color.g);
+            binario::write_birary(file, color.b);
+        }
+    }
+    
+    // Write pixel indices
+    for (const auto& pixel : picture.pixels) {
+        uint32_t const index = colorlist[pixel];
+        if (picture.colors <= 255) {
+            binario::write_birary(file, static_cast<uint8_t>(index));
+        } else if (picture.colors <= 65535) {
+            binario::write_birary(file, static_cast<uint16_t>(index));
+        } else {
+            binario::write_birary(file, index);
+        }
+    }
+}
+```
+
+## Compression Efficiency
+
+### Index Size Optimization
+
+CPPM uses variable-width indices based on palette size:
+
+| Unique Colors | Index Size | Example |
+|---------------|------------|----------|
+| ≤ 255 | 1 byte | Cartoon images, logos |
+| 256 - 65,535 | 2 bytes | Limited palette photos |
+| > 65,535 | 4 bytes | Complex photographs |
+
+### Compression Ratio Examples
+
+<Tabs>
+  <Tab title="High Compression">
+    **Scenario**: Logo with 50 colors, 1920×1080 resolution
+    
+    - **Original P6 size**: 1920 × 1080 × 3 = 6,220,800 bytes (~6.2 MB)
+    - **Color table**: 50 × 3 = 150 bytes
+    - **Pixel indices**: 1920 × 1080 × 1 = 2,073,600 bytes (~2.1 MB)
+    - **Total CPPM size**: ~2.1 MB
+    - **Compression ratio**: **3:1** ✓
+  </Tab>
+  
+  <Tab title="Moderate Compression">
+    **Scenario**: Flat-design illustration with 5,000 colors
+    
+    - **Original P6 size**: 6,220,800 bytes (~6.2 MB)
+    - **Color table**: 5,000 × 3 = 15,000 bytes
+    - **Pixel indices**: 1920 × 1080 × 2 = 4,147,200 bytes (~4.1 MB)
+    - **Total CPPM size**: ~4.1 MB
+    - **Compression ratio**: **1.5:1** ✓
+  </Tab>
+  
+  <Tab title="Low Compression">
+    **Scenario**: High-quality photo with 1 million unique colors
+    
+    - **Original P6 size**: 6,220,800 bytes (~6.2 MB)
+    - **Color table**: 1,000,000 × 3 = 3,000,000 bytes
+    - **Pixel indices**: 1920 × 1080 × 4 = 8,294,400 bytes
+    - **Total CPPM size**: ~11.3 MB
+    - **Compression ratio**: **Worse than original** ✗
+    
+    <Note>
+    CPPM is inefficient for photos with many unique colors. In such cases, keep the original P6 format or use a lossy format like JPEG.
+    </Note>
+  </Tab>
+</Tabs>
+
+## Color Depth Support
+
+### 8-bit Color (0-255)
+
+Standard for most images:
+
+```cpp
+constexpr int MAX_COLOR_VALUE = 255;
+```
+
+- **Total colors**: 256³ = 16,777,216
+- **Per-channel storage**: 1 byte
+- **Per-pixel storage**: 3 bytes
+
+### 16-bit Color (0-65535)
+
+Supported for high-precision imaging:
+
+```cpp
+constexpr int MAX_COLOR_VALUE_EXTENDED = 65535;
+```
+
+- **Total colors**: 65536³ ≈ 281 trillion
+- **Per-channel storage**: 2 bytes
+- **Per-pixel storage**: 6 bytes
+
+<Info>
+16-bit images are useful for scientific imaging, medical imaging, and when performing multiple processing operations without quality loss.
+</Info>
+
+## Practical Usage Examples
+
+### Reading a PPM File
+
+```cpp
+imgaos::Photo photo;
+if (!imgaos::loadPhoto(photo, "input.ppm")) {
+    std::cerr << "Failed to load image\n";
+    return;
+}
+
+std::cout << "Loaded " << photo.width << "x" << photo.height 
+          << " image with max value " << photo.maxColorValue << "\n";
+```
+
+### Writing a PPM File
+
+```cpp
+imgaos::Photo photo;
+photo.magicNumber = "P6";
+photo.width = 800;
+photo.height = 600;
+photo.maxColorValue = 255;
+photo.pixels.resize(800 * 600);
+
+// Fill pixels...
+
+if (!imgaos::savePhoto(photo, "output.ppm")) {
+    std::cerr << "Failed to save image\n";
+}
+```
+
+### Compressing to CPPM
+
+```bash
+# Using imtool-aos
+./imtool-aos input.ppm output.cppm compress
+
+# Using imtool-soa  
+./imtool-soa input.ppm output.cppm compress
+```
+
+## Binary I/O Utilities
+
+ImgTool uses custom binary I/O functions from `common/binario.hpp`:
+
+```cpp
+namespace binario {
+    // Read binary data of type T
+    template<typename T>
+    T read_binary(std::ifstream& file);
+    
+    // Write binary data of type T
+    template<typename T>
+    void write_birary(std::ofstream& file, T value);
+}
+```
+
+These ensure correct endianness handling and type-safe I/O.
+
+## Format Limitations
+
+### PPM (P3/P6)
+
+✓ Simple and portable
+✓ Lossless
+✓ Supports high bit depths
+✗ No compression (large files)
+✗ No metadata support
+✗ No alpha channel
+
+### CPPM (Custom)
+
+✓ Reduces file size for limited palettes
+✓ Lossless
+✓ Efficient for graphics/logos
+✗ Custom format (not widely supported)
+✗ Larger than PNG/WebP for photos
+✗ No alpha channel
+
+## Best Practices
+
+1. **Use P6 over P3**: Binary format is 3-5x smaller
+2. **Compress simple graphics**: Use CPPM for logos, diagrams, cartoons
+3. **Keep photos in P6**: CPPM may be larger than original
+4. **Check color count first**: Run `info` command to see unique color count
+5. **Consider PNG for distribution**: PPM is great for processing, but PNG is better for storage
+
+## Related Operations
+
+- **info**: Shows image dimensions, max color value, and unique color count
+- **compress**: Converts P6 → CPPM
+- **maxlevel**: Adjusts color depth (e.g., 8-bit → 16-bit)
+
+## Further Reading
+
+- [Memory Layouts](/concepts/memory-layouts)
+- [AOS vs SOA Comparison](/concepts/aos-vs-soa)

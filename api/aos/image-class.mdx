@@ -1,0 +1,255 @@
+---
+title: 'Image & Photo Classes'
+description: 'Core image container classes for AOS implementation'
+---
+
+## Image Class
+
+The `Image` class is the primary container for image data in the AOS (Array of Structures) implementation.
+
+### Definition
+
+```cpp imageaos.hpp
+class Image {
+  public:
+    image_size size;
+    int max_color;
+    uint32_t colors = 0;
+    std::vector<Pixel> pixels;
+
+    Image(image_size size_init, int max_c);
+};
+```
+
+### Members
+
+<ResponseField name="size" type="image_size" required>
+  Image dimensions containing width and height
+</ResponseField>
+
+<ResponseField name="max_color" type="int" required>
+  Maximum color value (typically 255 for 8-bit or 65535 for 16-bit)
+</ResponseField>
+
+<ResponseField name="colors" type="uint32_t">
+  Number of unique colors in the image. Defaults to 0.
+</ResponseField>
+
+<ResponseField name="pixels" type="std::vector<Pixel>" required>
+  Vector containing all pixel data in row-major order
+</ResponseField>
+
+### Constructor
+
+```cpp imageaos.cpp
+Image::Image(image_size size_init, int const max_c)
+    : size{size_init}, 
+      max_color(max_c), 
+      pixels(static_cast<std::vector<Pixel>::size_type>(
+        size_init.width * size_init.height
+      )) {}
+```
+
+<ParamField path="size_init" type="image_size" required>
+  Initial dimensions for the image
+</ParamField>
+
+<ParamField path="max_c" type="int" required>
+  Maximum color value for the image
+</ParamField>
+
+### Usage Example
+
+```cpp
+// Create a 1920x1080 image with 8-bit color depth
+image_size dimensions = {.width = 1920, .height = 1080};
+Image img(dimensions, 255);
+
+// Access pixel data
+Pixel& first_pixel = img.pixels[0];
+
+// Check number of unique colors
+std::cout << "Unique colors: " << img.colors << std::endl;
+```
+
+---
+
+## Photo Class
+
+The `Photo` class represents a PPM image file with header information and pixel data.
+
+### Definition
+
+```cpp imageaos.hpp
+class Photo {
+  public:
+    std::string magicNumber;
+    int width = 0;
+    int height = 0;
+    unsigned int maxColorValue = 0;
+    std::vector<Pixel> pixels;
+};
+```
+
+### Members
+
+<ResponseField name="magicNumber" type="std::string">
+  PPM format identifier (typically "P6" for binary PPM)
+</ResponseField>
+
+<ResponseField name="width" type="int">
+  Image width in pixels. Defaults to 0.
+</ResponseField>
+
+<ResponseField name="height" type="int">
+  Image height in pixels. Defaults to 0.
+</ResponseField>
+
+<ResponseField name="maxColorValue" type="unsigned int">
+  Maximum color value from PPM header. Defaults to 0.
+</ResponseField>
+
+<ResponseField name="pixels" type="std::vector<Pixel>">
+  Vector containing all pixel data
+</ResponseField>
+
+### Related Functions
+
+<Tabs>
+  <Tab title="Load Photo">
+    ```cpp imageaos.hpp
+    bool loadPhoto(Photo& photo, const std::string& filename);
+    ```
+    
+    Loads a PPM image file into a Photo object.
+    
+    <ParamField path="photo" type="Photo&" required>
+      Reference to Photo object to populate
+    </ParamField>
+    
+    <ParamField path="filename" type="const std::string&" required>
+      Path to the PPM file
+    </ParamField>
+    
+    <ResponseField name="return" type="bool">
+      Returns `true` on success, `false` on failure
+    </ResponseField>
+  </Tab>
+  
+  <Tab title="Save Photo">
+    ```cpp imageaos.hpp
+    bool savePhoto(const Photo& photo, const std::string& filename);
+    ```
+    
+    Saves a Photo object to a PPM file.
+    
+    <ParamField path="photo" type="const Photo&" required>
+      Reference to Photo object to save
+    </ParamField>
+    
+    <ParamField path="filename" type="const std::string&" required>
+      Output file path
+    </ParamField>
+    
+    <ResponseField name="return" type="bool">
+      Returns `true` on success, `false` on failure
+    </ResponseField>
+  </Tab>
+  
+  <Tab title="Read Header">
+    ```cpp imageaos.hpp
+    bool readHeader(std::ifstream& file, Photo& photo);
+    ```
+    
+    Reads PPM header information from a file stream.
+    
+    <ParamField path="file" type="std::ifstream&" required>
+      Input file stream
+    </ParamField>
+    
+    <ParamField path="photo" type="Photo&" required>
+      Photo object to populate with header data
+    </ParamField>
+    
+    <ResponseField name="return" type="bool">
+      Returns `true` if header is valid "P6" format, `false` otherwise
+    </ResponseField>
+  </Tab>
+</Tabs>
+
+### Usage Example
+
+```cpp
+// Load an image from file
+Photo photo;
+if (loadPhoto(photo, "input.ppm")) {
+    std::cout << "Loaded: " << photo.width << "x" << photo.height << std::endl;
+    std::cout << "Format: " << photo.magicNumber << std::endl;
+    std::cout << "Max value: " << photo.maxColorValue << std::endl;
+}
+
+// Save modified image
+if (savePhoto(photo, "output.ppm")) {
+    std::cout << "Image saved successfully" << std::endl;
+}
+```
+
+---
+
+## image_size Struct
+
+Simple structure for storing image dimensions.
+
+### Definition
+
+```cpp imageaos.hpp
+struct image_size {
+  int width;
+  int height;
+};
+```
+
+<ResponseField name="width" type="int" required>
+  Image width in pixels
+</ResponseField>
+
+<ResponseField name="height" type="int" required>
+  Image height in pixels
+</ResponseField>
+
+### Usage Example
+
+```cpp
+image_size dims = {.width = 640, .height = 480};
+Image img(dims, 255);
+```
+
+---
+
+## img_size Struct
+
+Alternative structure for image dimensions using `std::size_t`.
+
+### Definition
+
+```cpp imageaos.hpp
+struct img_size {
+  std::size_t width;
+  std::size_t height;
+};
+```
+
+<ResponseField name="width" type="std::size_t" required>
+  Image width in pixels (unsigned)
+</ResponseField>
+
+<ResponseField name="height" type="std::size_t" required>
+  Image height in pixels (unsigned)
+</ResponseField>
+
+### Usage Example
+
+```cpp
+img_size size = {.width = 1920, .height = 1080};
+CutFreqParams params(image_data, size, 100);
+```

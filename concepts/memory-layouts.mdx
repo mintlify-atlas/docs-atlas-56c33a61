@@ -1,0 +1,163 @@
+---
+title: Memory Layouts in Image Processing
+description: Understanding how pixel data organization affects performance in ImgTool
+---
+
+## Overview
+
+Memory layout refers to how data is organized and stored in computer memory. In image processing, the choice of memory layout has significant implications for performance, especially when processing large images with millions of pixels.
+
+## What is Memory Layout?
+
+Memory layout determines the physical arrangement of data in RAM. For image processing, we primarily deal with pixel data consisting of RGB color channels. The way these channels are organized in memory can dramatically affect:
+
+- **Cache efficiency**: How well the CPU cache can predict and prefetch data
+- **Memory bandwidth utilization**: How efficiently data is transferred from RAM
+- **Vectorization potential**: How easily SIMD instructions can process data
+- **Access patterns**: How sequential or scattered memory reads/writes are
+
+## How Pixel Data is Organized
+
+ImgTool implements two fundamental memory layout strategies:
+
+### Array of Structs (AOS)
+
+In the AOS layout, each pixel is stored as a complete structure with all its color components together:
+
+```cpp
+struct Pixel {
+    int r, g, b;
+};
+std::vector<Pixel> pixels;
+```
+
+**Memory representation:**
+```
+[R₁G₁B₁][R₂G₂B₂][R₃G₃B₃][R₄G₄B₄]...
+```
+
+Each bracket represents a single pixel with its RGB values stored sequentially.
+
+### Struct of Arrays (SOA)
+
+In the SOA layout, each color channel is stored in a separate contiguous array:
+
+```cpp
+struct ImageSOA {
+    std::vector<int> r;  // Red channel
+    std::vector<int> g;  // Green channel  
+    std::vector<int> b;  // Blue channel
+    std::size_t width;
+    std::size_t height;
+};
+```
+
+**Memory representation:**
+```
+Red:   [R₁][R₂][R₃][R₄]...
+Green: [G₁][G₂][G₃][G₄]...
+Blue:  [B₁][B₂][B₃][B₄]...
+```
+
+Each channel is stored in a separate, contiguous memory region.
+
+## Cache Implications
+
+### Spatial Locality
+
+Modern CPUs use cache hierarchies (L1, L2, L3) to speed up memory access. The cache line size is typically 64 bytes, which can hold multiple data elements.
+
+<Note>
+When the CPU loads data from RAM, it fetches an entire cache line (typically 64 bytes), not just the requested byte. This means adjacent data comes "for free" if accessed soon after.
+</Note>
+
+### AOS Cache Behavior
+
+**Advantages:**
+- Excellent for operations that process all channels of a single pixel
+- All RGB values fit in the same cache line
+- Natural for pixel-by-pixel algorithms
+
+**Disadvantages:**
+- Wastes cache bandwidth when processing only one channel
+- Less efficient for channel-specific operations
+- Loading one channel brings unused channels into cache
+
+**Example: Grayscale Conversion**
+
+When converting to grayscale (accessing all R, G, B):
+```cpp
+for (auto& pixel : pixels) {
+    int gray = (pixel.r + pixel.g + pixel.b) / 3;
+}
+```
+All three values are adjacent in memory ✓ Cache-friendly!
+
+### SOA Cache Behavior
+
+**Advantages:**
+- Optimal for operations on a single channel
+- Perfect cache line utilization for channel processing
+- Better vectorization opportunities (SIMD)
+- Efficient for algorithms that process channels independently
+
+**Disadvantages:**
+- Requires more cache lines for full-pixel operations
+- Potential cache thrashing when alternating between channels
+- More complex pointer arithmetic
+
+**Example: Red Channel Processing**
+
+When processing only the red channel:
+```cpp
+for (size_t i = 0; i < image.r.size(); ++i) {
+    image.r[i] = clamp(image.r[i] * 1.5, 0, 255);
+}
+```
+Only red channel data fills the cache ✓ No wasted bandwidth!
+
+## Performance Considerations
+
+<Tabs>
+  <Tab title="AOS is better when">
+    - Processing complete pixels together
+    - Implementing pixel-based filters (blur, sharpen)
+    - Performing color space conversions
+    - Working with small images that fit in cache
+    - Code simplicity is a priority
+  </Tab>
+  <Tab title="SOA is better when">
+    - Processing individual color channels
+    - Applying histogram operations
+    - Performing channel-specific transformations
+    - Leveraging SIMD/vectorization
+    - Processing very large images
+    - Optimizing for modern CPU architectures
+  </Tab>
+</Tabs>
+
+## Real-World Impact
+
+The choice of memory layout can result in:
+
+- **2-4x performance differences** depending on the operation
+- **Different power consumption** due to cache behavior
+- **Varying memory bandwidth usage**
+- **Different compiler optimization opportunities**
+
+<Info>
+ImgTool provides both implementations (imtool-aos and imtool-soa) so you can benchmark which layout performs better for your specific workload on your hardware.
+</Info>
+
+## Best Practices
+
+1. **Profile first**: Measure performance on your target hardware
+2. **Consider your algorithms**: What operations are most common?
+3. **Think about data access patterns**: Sequential or random?
+4. **Account for cache sizes**: Modern CPUs have 32-256KB L1/L2 cache
+5. **Test with realistic workloads**: Small test images may not reflect production performance
+
+## Further Reading
+
+- [AOS vs SOA Comparison](/concepts/aos-vs-soa)
+- [PPM Format Details](/concepts/ppm-format)

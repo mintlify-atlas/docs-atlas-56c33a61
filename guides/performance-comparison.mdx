@@ -1,0 +1,361 @@
+---
+title: Performance Comparison
+description: Guide to profiling and comparing AOS vs SOA implementations using Linux perf
+---
+
+## Overview
+
+ImgTool includes both Array of Structures (AOS) and Structure of Arrays (SOA) implementations of image processing operations. This guide shows you how to use Linux `perf` to profile and compare their performance characteristics.
+
+## Prerequisites
+
+- Linux operating system
+- `perf` tool installed (`sudo apt-get install linux-tools-common`)
+- Root/sudo access for hardware performance counters
+- ImgTool built in Release mode
+
+## Using perf for Profiling
+
+### Basic Performance Statistics
+
+The `perf stat` command measures performance counters during program execution:
+
+```bash
+perf stat ./build-release/imtool-aos/imtool-aos input.ppm output.ppm compress
+```
+
+<Note>
+  Always use Release builds for performance measurements. Debug builds include overhead that skews results.
+</Note>
+
+### Energy Consumption Measurement
+
+Measure energy consumption of image operations using the power/energy-pkg counter:
+
+```bash
+perf stat -a -e power/energy-pkg/ ./build-release/imtool-aos/imtool-aos input.ppm output.cppm compress
+```
+
+<Accordion title="Understanding the -a -e flags">
+  - **-a**: System-wide collection (requires sudo)
+  - **-e power/energy-pkg/**: Monitor CPU package energy consumption in Joules
+</Accordion>
+
+## Performance Metrics Explained
+
+### Energy Consumption
+
+**What it measures**: Total energy consumed by the CPU package during execution
+
+**Unit**: Joules
+
+**Interpretation**:
+- Lower values indicate more energy-efficient code
+- Important for battery-powered devices and data centers
+- Affected by execution time and CPU utilization
+
+### Cache Behavior
+
+Measure cache hit/miss rates:
+
+```bash
+perf stat -e cache-references,cache-misses,L1-dcache-loads,L1-dcache-load-misses \
+  ./build-release/imtool-aos/imtool-aos input.ppm output.ppm compress
+```
+
+**Key metrics**:
+- **cache-references**: Total cache accesses
+- **cache-misses**: Number of cache misses
+- **L1-dcache-loads**: L1 data cache loads
+- **L1-dcache-load-misses**: L1 data cache load misses
+
+<Note>
+  SOA implementations typically show better cache performance due to improved spatial locality.
+</Note>
+
+### Execution Time
+
+Measure CPU cycles and execution time:
+
+```bash
+perf stat -e cycles,instructions,cpu-clock \
+  ./build-release/imtool-soa/imtool-soa input.ppm output.ppm resize 8000 8000
+```
+
+**Metrics**:
+- **cycles**: Total CPU cycles
+- **instructions**: Total instructions executed
+- **cpu-clock**: Total CPU time in milliseconds
+- **IPC** (instructions per cycle): Calculated as instructions/cycles
+
+## Comparing AOS vs SOA
+
+### Compression Operation
+
+<Steps>
+  <Step title="Run AOS implementation">
+    ```bash
+    perf stat -a -e power/energy-pkg/ \
+      ./build-release/imtool-aos/imtool-aos \
+      ./input/lake-large.ppm \
+      ./output/compress-lake-large-aos.cppm \
+      compress
+    ```
+  </Step>
+  
+  <Step title="Run SOA implementation">
+    ```bash
+    perf stat -a -e power/energy-pkg/ \
+      ./build-release/imtool-soa/imtool-soa \
+      ./input/lake-large.ppm \
+      ./output/compress-lake-large-soa.cppm \
+      compress
+    ```
+  </Step>
+  
+  <Step title="Compare results">
+    Look for differences in:
+    - Energy consumption (Joules)
+    - Execution time
+    - Performance counter values
+  </Step>
+</Steps>
+
+### Resize Operation
+
+Resize operations are memory-intensive and show significant AOS/SOA differences:
+
+<CodeGroup>
+```bash AOS Resize
+perf stat -a -e power/energy-pkg/ \
+  ./build-release/imtool-aos/imtool-aos \
+  ./input/deer-large.ppm \
+  ./output/resize-deer-large-aos.ppm \
+  resize 8000 8000
+```
+
+```bash SOA Resize
+perf stat -a -e power/energy-pkg/ \
+  ./build-release/imtool-soa/imtool-soa \
+  ./input/deer-large.ppm \
+  ./output/resize-deer-large-soa.ppm \
+  resize 8000 8000
+```
+</CodeGroup>
+
+### CutFreq Operation
+
+Color frequency operations demonstrate hash table performance:
+
+<CodeGroup>
+```bash AOS CutFreq
+perf stat -a -e power/energy-pkg/ \
+  ./build-release/imtool-aos/imtool-aos \
+  ./input/sabatini.ppm \
+  ./output/cutfreq-sabatini-aos.ppm \
+  cutfreq 100000
+```
+
+```bash SOA CutFreq
+perf stat -a -e power/energy-pkg/ \
+  ./build-release/imtool-soa/imtool-soa \
+  ./input/sabatini.ppm \
+  ./output/cutfreq-sabatini-soa.ppm \
+  cutfreq 100000
+```
+</CodeGroup>
+
+### MaxLevel Operation
+
+<CodeGroup>
+```bash AOS MaxLevel
+perf stat -a -e power/energy-pkg/ \
+  ./build-release/imtool-aos/imtool-aos \
+  ./input/lake-large.ppm \
+  ./output/maxlevel-lake-large-aos.ppm \
+  maxlevel 65535
+```
+
+```bash SOA MaxLevel
+perf stat -a -e power/energy-pkg/ \
+  ./build-release/imtool-soa/imtool-soa \
+  ./input/lake-large.ppm \
+  ./output/maxlevel-lake-large-soa.ppm \
+  maxlevel 65535
+```
+</CodeGroup>
+
+### Info Operation
+
+Lightweight operation for baseline comparison:
+
+<CodeGroup>
+```bash AOS Info
+perf stat -a -e power/energy-pkg/ \
+  ./build-release/imtool-aos/imtool-aos \
+  ./input/deer-small.ppm \
+  ./output/info-deer-small-aos.ppm \
+  info
+```
+
+```bash SOA Info
+perf stat -a -e power/energy-pkg/ \
+  ./build-release/imtool-soa/imtool-soa \
+  ./input/deer-small.ppm \
+  ./output/info-deer-small-soa.ppm \
+  info
+```
+</CodeGroup>
+
+## Interpreting Results
+
+### Expected Performance Characteristics
+
+<Accordion title="AOS (Array of Structures)">
+  **Advantages**:
+  - Better for operations accessing all pixel components together
+  - More intuitive memory layout
+  - Simpler to understand and debug
+  
+  **Disadvantages**:
+  - Poorer cache performance for operations on single color channels
+  - More cache misses when processing individual components
+  - Lower memory bandwidth utilization
+</Accordion>
+
+<Accordion title="SOA (Structure of Arrays)">
+  **Advantages**:
+  - Excellent cache performance for single-channel operations
+  - Better vectorization opportunities
+  - Higher memory bandwidth utilization
+  - Lower energy consumption on many workloads
+  
+  **Disadvantages**:
+  - More complex memory management
+  - Potential overhead when all components needed simultaneously
+  - Less intuitive mental model
+</Accordion>
+
+### Sample Output Analysis
+
+A typical `perf stat` output looks like:
+
+```plaintext
+ Performance counter stats for './build-release/imtool-aos/imtool-aos ...':
+
+          1,234.56 Joules power/energy-pkg/
+
+       2.456789012 seconds time elapsed
+
+       2.234567000 seconds user
+       0.123456000 seconds sys
+```
+
+**Key observations**:
+- **Energy**: Lower is better (more efficient)
+- **Time elapsed**: Wall-clock time (includes I/O)
+- **User time**: Time spent in user-space code
+- **Sys time**: Time spent in kernel (I/O, system calls)
+
+### Detailed Performance Counters
+
+For comprehensive analysis:
+
+```bash
+perf stat -d ./build-release/imtool-aos/imtool-aos input.ppm output.ppm compress
+```
+
+This provides:
+- Instructions executed
+- Cycles
+- Cache references and misses
+- Branch predictions and mispredictions
+- TLB (Translation Lookaside Buffer) statistics
+
+<Note>
+  Use `-dd` or `-ddd` for even more detailed statistics.
+</Note>
+
+## Performance Testing Workflow
+
+<Steps>
+  <Step title="Build in Release mode">
+    ```bash
+    cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release
+    cmake --build build-release
+    ```
+  </Step>
+  
+  <Step title="Prepare test images">
+    Ensure you have test images in `./input/` directory:
+    - `lake-small.ppm`
+    - `lake-large.ppm`
+    - `deer-small.ppm`
+    - `deer-large.ppm`
+    - `sabatini.ppm`
+  </Step>
+  
+  <Step title="Run baseline tests">
+    Test both implementations with same inputs to establish baseline.
+  </Step>
+  
+  <Step title="Compare metrics">
+    Analyze energy, time, cache behavior, and other counters.
+  </Step>
+  
+  <Step title="Document findings">
+    Record which implementation performs better for each operation type.
+  </Step>
+</Steps>
+
+## Advanced Profiling
+
+### Record and Analyze with perf record
+
+Capture detailed profiling data:
+
+```bash
+perf record -g ./build-release/imtool-aos/imtool-aos input.ppm output.ppm resize 8000 8000
+perf report
+```
+
+This shows:
+- Hotspot functions
+- Call graphs
+- Time spent in each function
+
+### Flame Graphs
+
+Generate flame graphs for visualization:
+
+```bash
+perf record -F 99 -g ./build-release/imtool-soa/imtool-soa input.ppm output.ppm compress
+perf script | stackcollapse-perf.pl | flamegraph.pl > flamegraph.svg
+```
+
+<Warning>
+  Flame graph scripts require installation from https://github.com/brendangregg/FlameGraph
+</Warning>
+
+## Test Images Reference
+
+The performance tests in `run_and_build.sh` use these images:
+
+- **lake-small.ppm**: Small lake image for quick tests
+- **lake-large.ppm**: Large lake image for stress testing
+- **deer-small.ppm**: Small deer image
+- **deer-large.ppm**: Large deer image for memory-intensive operations
+- **sabatini.ppm**: Complex image for color frequency tests
+
+## Best Practices
+
+1. **Run multiple iterations**: Performance can vary between runs
+2. **Use Release builds**: Debug builds have significant overhead
+3. **Minimize system load**: Close other applications during testing
+4. **Test with various image sizes**: Small and large images show different characteristics
+5. **Compare same operations**: Don't compare compress AOS vs resize SOA
+6. **Document system specs**: CPU, RAM, and kernel version affect results
+
+<Note>
+  For reproducible results, consider disabling CPU frequency scaling and running on isolated cores.
+</Note>

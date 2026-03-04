@@ -1,0 +1,249 @@
+---
+title: 'compress'
+description: 'Optimize image file size through color palette compression'
+---
+
+The `compress` operation reduces image file size by building an optimized color palette and storing pixels as palette indices rather than full RGB values.
+
+## Syntax
+
+```bash
+imtool-<variant> <input.ppm> <output.cppm> compress
+```
+
+<ParamField path="input.ppm" type="path" required>
+  Input PPM file in P6 format
+</ParamField>
+
+<ParamField path="output.cppm" type="path" required>
+  Output compressed file (CPPM format)
+</ParamField>
+
+## How It Works
+
+### Algorithm Overview
+
+1. **Read Input**: Load PPM file and parse header (magic number, dimensions, max color value)
+2. **Build Color Table**: Scan all pixels and create a map of unique colors
+3. **Index Assignment**: Assign sequential indices to each unique color (0 to n_colors-1)
+4. **Write CPPM**: Output custom format with color table followed by pixel indices
+
+<Tabs>
+  <Tab title="AOS Implementation">
+    **Function**: `imgaos::compress()`
+    
+    Location: `imgaos/imageaos.cpp:85-121`
+    
+    ```cpp
+    void compress(progargsCommon::parameters_files &params) {
+      // Read PPM header
+      std::string identification;
+      int width, height, max_color;
+      input >> identification >> width >> height >> max_color;
+      
+      // Load pixels into vector
+      Image picture({.width=width, .height=height}, max_color);
+      for(size_t i = 0; i < picture.pixels.size(); i++) {
+        if (picture.max_color <= 255) {
+          picture.pixels[i].r = read_binary<uint8_t>(input);
+          picture.pixels[i].g = read_binary<uint8_t>(input);
+          picture.pixels[i].b = read_binary<uint8_t>(input);
+        } else {
+          picture.pixels[i].r = read_binary<uint16_t>(input);
+          // ...
+        }
+      }
+      
+      // Build color table and write output
+      std::map<Pixel, uint32_t> colorlist = getColors(picture.pixels, picture);
+      write_dataCPPM(picture, colorlist, params.output_file);
+    }
+    ```
+    
+    **Color Table Construction**: `imgaos/imageaos.cpp:27-45`
+    
+    ```cpp
+    std::map<Pixel, uint32_t> getColors(std::vector<Pixel>& input, Image& picture) {
+      std::map<Pixel, uint32_t> color_table;
+      
+      // Find unique colors
+      for (const auto& color : input) {
+        if (color_table.find(color) == color_table.end()) {
+          color_table[color] = 0;
+          picture.colors++;
+        }
+      }
+      
+      // Assign indices
+      uint32_t indice = 0;
+      for (auto [color, index] : color_table) {
+        color_table[color] = indice++;
+      }
+      
+      return color_table;
+    }
+    ```
+  </Tab>
+  
+  <Tab title="SOA Implementation">
+    **Function**: `imgsoa::compress()`
+    
+    Location: `imgsoa/imagesoa.cpp:118-153`
+    
+    ```cpp
+    void compress(progargsCommon::parameters_files params) {
+      // Read PPM header
+      std::string idn;
+      int width, height, max_color;
+      input >> idn >> width >> height >> max_color;
+      
+      // Load pixels into separate channel arrays
+      Image image(size_init, max_color);
+      for(size_t i = 0; i < image.red.size(); i++) {
+        if (image.max_color <= 255) {
+          image.red[i] = read_binary<uint8_t>(input);
+          image.green[i] = read_binary<uint8_t>(input);
+          image.blue[i] = read_binary<uint8_t>(input);
+        } else {
+          image.red[i] = read_binary<uint16_t>(input);
+          // ...
+        }
+      }
+      
+      // Build color table from SOA structure
+      std::map<std::tuple<uint16_t, uint16_t, uint16_t>, uint32_t> 
+        color_list = getColors(image);
+      
+      // Write CPPM format
+      output << "C6 " << image.size.width << " " << image.size.height 
+             << " " << image.max_color << " " << image.n_colors << "\n";
+      write_color_table(image, color_list, params.output_file);
+      write_pixels(image, color_list, params.output_file);
+    }
+    ```
+    
+    **Color Table Construction**: `imgsoa/imagesoa.cpp:30-49`
+    
+    ```cpp
+    std::map<std::tuple<uint16_t, uint16_t, uint16_t>, uint32_t> 
+    getColors(Image& image) {
+      std::map<std::tuple<uint16_t, uint16_t, uint16_t>, uint32_t> color_map;
+      
+      // Scan SOA arrays
+      for (size_t i = 0; i < image.red.size(); i++) {
+        auto color = std::make_tuple(image.red[i], image.green[i], image.blue[i]);
+        
+        if (color_map.find(color) == color_map.end()) {
+          color_map[color] = 0;
+          ++image.n_colors;
+        }
+      }
+      
+      // Assign sequential indices
+      uint32_t indice = 0;
+      for (auto [color, index] : color_map) {
+        color_map[color] = indice++;
+      }
+      
+      return color_map;
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## CPPM Output Format
+
+The compressed CPPM format uses the magic number `C6`:
+
+```
+C6 <width> <height> <max_color> <n_colors>
+<color_table>
+<pixel_indices>
+```
+
+### Header Structure
+
+- **Magic Number**: `C6` (indicates compressed PPM)
+- **Width**: Image width in pixels
+- **Height**: Image height in pixels  
+- **Max Color**: Maximum color value (255 or 65535)
+- **N Colors**: Number of unique colors in palette
+
+### Color Table
+
+Each color is stored based on bit depth:
+
+- **8-bit** (max_color ≤ 255): 3 bytes per color (R, G, B as `uint8_t`)
+- **16-bit** (max_color > 255): 6 bytes per color (R, G, B as `uint16_t`)
+
+### Pixel Indices
+
+Each pixel stores an index into the color table:
+
+- **n_colors ≤ 255**: 1 byte per pixel (`uint8_t`)
+- **256 ≤ n_colors ≤ 65535**: 2 bytes per pixel (`uint16_t`)
+- **n_colors > 65535**: 4 bytes per pixel (`uint32_t`)
+
+## Examples
+
+<CodeGroup>
+```bash AOS - Small Image
+./build-release/imtool-aos/imtool-aos \
+  ./input/lake-small.ppm \
+  ./output/compress-lake-small-aos.cppm \
+  compress
+```
+
+```bash SOA - Large Image
+./build-release/imtool-soa/imtool-soa \
+  ./input/deer-large.ppm \
+  ./output/compress-deer-large-soa.cppm \
+  compress
+```
+
+```bash With Performance Monitoring
+perf stat -a -e power/energy-pkg/ \
+  ./build-release/imtool-aos/imtool-aos \
+  ./input/sabatini.ppm \
+  ./output/compress-sabatini-aos.cppm \
+  compress
+```
+</CodeGroup>
+
+## Compression Ratio
+
+The compression ratio depends on the number of unique colors:
+
+**Original PPM size**: `width × height × 3 bytes` (for 8-bit)
+
+**CPPM size**: `header + (n_colors × 3) + (width × height × index_size)`
+
+Best compression occurs when:
+- Image has few unique colors (e.g., graphics, logos)
+- Large images with repeated color patterns
+
+<Note>
+  For photographic images with many unique colors, CPPM may be larger than the original PPM. This format is optimized for images with limited color palettes.
+</Note>
+
+## Performance Characteristics
+
+- **Time Complexity**: O(n) for scanning pixels + O(k log k) for building sorted color map (where k = unique colors)
+- **Memory**: Requires loading entire image into memory
+- **I/O**: Two passes - one read (input PPM), one write (output CPPM)
+
+## Error Conditions
+
+<Warning>
+  The compress operation will fail if:
+  
+  - Input file is not valid P6 PPM format
+  - Cannot open input file for reading
+  - Cannot create output file for writing
+  - Insufficient memory to load image
+</Warning>
+
+## Related Commands
+
+- [cutfreq](/commands/cutfreq) - Reduce unique colors before compression for better ratios
+- [info](/commands/info) - Check image properties before compression

@@ -1,0 +1,276 @@
+---
+title: Building ImgTool
+description: Comprehensive guide to building ImgTool with CMake, including compiler configuration and dependencies
+---
+
+## Overview
+
+ImgTool uses CMake 3.29+ as its build system and requires a C++20-compliant compiler. The project includes both AOS (Array of Structures) and SOA (Structure of Arrays) implementations of image processing operations.
+
+## Prerequisites
+
+- CMake 3.29 or higher
+- C++20 compliant compiler (GCC, Clang, or MSVC)
+- Git (for FetchContent dependencies)
+
+## Quick Start
+
+<Steps>
+  <Step title="Configure the build">
+    Configure CMake with your desired build type:
+    
+    <CodeGroup>
+    ```bash Release Build
+    cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release
+    ```
+    
+    ```bash Debug Build
+    cmake -S . -B build-debug -DCMAKE_BUILD_TYPE=Debug
+    ```
+    </CodeGroup>
+  </Step>
+  
+  <Step title="Build the project">
+    Compile the project using CMake:
+    
+    ```bash
+    cmake --build build-release
+    ```
+    
+    For debug builds:
+    ```bash
+    cmake --build build-debug
+    ```
+  </Step>
+  
+  <Step title="Run the executables">
+    The build produces two main executables:
+    
+    ```bash
+    # AOS implementation
+    ./build-release/imtool-aos/imtool-aos <input.ppm> <output> <operation> [args]
+    
+    # SOA implementation
+    ./build-release/imtool-soa/imtool-soa <input.ppm> <output> <operation> [args]
+    ```
+  </Step>
+</Steps>
+
+## Build Configuration
+
+### CMake Settings
+
+The project configures the following CMake settings (source/CMakeLists.txt:10-13):
+
+```cmake
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+```
+
+<Note>
+  C++20 is required for the project. The `CMAKE_CXX_EXTENSIONS OFF` ensures portable, standards-compliant code.
+</Note>
+
+### Compiler Flags
+
+The project uses strict compiler warnings to ensure code quality (source/CMakeLists.txt:16):
+
+```cmake
+add_compile_options(-Wall -Wextra -Wpedantic -Werror -Wconversion -Wsign-conversion)
+```
+
+<Accordion title="Compiler Flag Explanations">
+  - **-Wall**: Enable all common warnings
+  - **-Wextra**: Enable extra warnings not covered by -Wall
+  - **-Wpedantic**: Enforce strict ISO C++ compliance
+  - **-Werror**: Treat all warnings as errors
+  - **-Wconversion**: Warn about implicit type conversions that may change values
+  - **-Wsign-conversion**: Warn about implicit conversions between signed and unsigned types
+</Accordion>
+
+## Build Types
+
+### Release Build
+
+Optimized for performance with maximum optimization flags:
+
+```bash
+cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release
+cmake --build build-release
+```
+
+<Note>
+  Release builds are used for performance benchmarking and production use.
+</Note>
+
+### Debug Build
+
+Includes debug symbols and disables optimizations for easier debugging:
+
+```bash
+cmake -S . -B build-debug -DCMAKE_BUILD_TYPE=Debug
+cmake --build build-debug
+```
+
+## Dependencies with FetchContent
+
+ImgTool uses CMake's FetchContent to automatically download and build dependencies:
+
+### Google Test (v1.15.2)
+
+Used for unit testing (source/CMakeLists.txt:22-27):
+
+```cmake
+FetchContent_Declare(googletest
+        GIT_REPOSITORY "https://github.com/google/googletest"
+        GIT_TAG "v1.15.2"
+        GIT_SHALLOW TRUE)
+FetchContent_MakeAvailable(googletest)
+```
+
+### Microsoft GSL (v4.0.0)
+
+Provides the Guidelines Support Library for safer C++ (source/CMakeLists.txt:30-34):
+
+```cmake
+FetchContent_Declare(GSL
+        GIT_REPOSITORY "https://github.com/microsoft/GSL"
+        GIT_TAG "v4.0.0"
+        GIT_SHALLOW TRUE)
+FetchContent_MakeAvailable(GSL)
+```
+
+<Note>
+  `GIT_SHALLOW TRUE` speeds up downloads by fetching only the specified tag without full history.
+</Note>
+
+## Clang-Tidy Integration
+
+The project includes automatic clang-tidy static analysis (source/CMakeLists.txt:36-39):
+
+```cmake
+set(CMAKE_CXX_CLANG_TIDY clang-tidy-19;
+        -format-style=file;
+        -header-filter=.;)
+```
+
+<Warning>
+  Clang-tidy runs automatically during compilation and will report code quality issues. You need clang-tidy-19 installed for this feature.
+</Warning>
+
+### Disabling Clang-Tidy
+
+If you don't have clang-tidy-19 installed or want to disable it:
+
+```bash
+cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release -DCMAKE_CXX_CLANG_TIDY=""
+```
+
+## Project Structure
+
+The build system compiles several libraries and executables:
+
+### Libraries
+
+- **common**: Shared utilities (progargs, binary I/O, info)
+- **imgaos**: Array of Structures image implementation
+- **imgsoa**: Structure of Arrays image implementation
+
+### Executables
+
+- **imtool-aos**: CLI tool using AOS implementation
+- **imtool-soa**: CLI tool using SOA implementation
+
+### Test Executables
+
+- **utest-common**: Unit tests for common library
+- **utest-imgaos**: Unit tests for AOS implementation
+- **utest-img-soa**: Unit tests for SOA implementation
+
+## Build Script
+
+The project includes a convenience script for building (source/run_and_build.sh:5-6):
+
+```bash
+#!/bin/sh
+cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release
+cmake --build build-release
+```
+
+Make the script executable and run it:
+
+```bash
+chmod +x run_and_build.sh
+./run_and_build.sh
+```
+
+## Linking Libraries
+
+### Common Library
+
+The common library links to GSL (source/common/CMakeLists.txt:7):
+
+```cmake
+target_link_libraries(common PRIVATE Microsoft.GSL::GSL)
+```
+
+### Image Libraries
+
+The imgaos library links to both common and GSL (source/imgaos/CMakeLists.txt:7):
+
+```cmake
+target_link_libraries(imgaos PUBLIC common PRIVATE Microsoft.GSL::GSL)
+```
+
+<Note>
+  `PUBLIC` linking means that targets linking to imgaos will also link to common.
+</Note>
+
+## Troubleshooting
+
+<Accordion title="CMake version too old">
+  If you see "CMake 3.29 or higher is required", upgrade CMake:
+  
+  ```bash
+  # On Ubuntu/Debian
+  sudo apt-get update
+  sudo apt-get install cmake
+  
+  # Or download from cmake.org
+  wget https://github.com/Kitware/CMake/releases/download/v3.29.0/cmake-3.29.0-linux-x86_64.sh
+  ```
+</Accordion>
+
+<Accordion title="Compiler doesn't support C++20">
+  Ensure you have a recent compiler:
+  
+  - GCC 10 or higher
+  - Clang 12 or higher
+  - MSVC 2019 16.11 or higher
+  
+  You can specify a compiler explicitly:
+  
+  ```bash
+  cmake -S . -B build-release -DCMAKE_CXX_COMPILER=g++-11
+  ```
+</Accordion>
+
+<Accordion title="Clang-tidy-19 not found">
+  Either install clang-tidy-19 or disable it:
+  
+  ```bash
+  cmake -S . -B build-release -DCMAKE_CXX_CLANG_TIDY=""
+  ```
+</Accordion>
+
+<Accordion title="FetchContent fails to download dependencies">
+  Check your internet connection and Git installation. You can also manually clone dependencies:
+  
+  ```bash
+  git clone https://github.com/google/googletest.git
+  git clone https://github.com/microsoft/GSL.git
+  ```
+  
+  Then modify CMakeLists.txt to use `find_package()` instead.
+</Accordion>

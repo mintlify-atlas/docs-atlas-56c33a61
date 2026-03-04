@@ -1,0 +1,230 @@
+---
+title: Image & Photo Classes
+description: SOA-based image container classes with separated color channels
+---
+
+## Overview
+
+The SOA (Structure of Arrays) implementation provides image container classes that store color channels in separate, contiguous memory arrays. This layout improves cache locality and enables SIMD optimizations for batch operations.
+
+## Image Class
+
+The `Image` class stores image data using separate vectors for each color channel.
+
+### Definition
+
+```cpp
+class Image {
+  public:
+    image_size size;
+    int max_color;
+    uint32_t n_colors = 0;
+    std::vector<uint16_t> red;
+    std::vector<uint16_t> green;
+    std::vector<uint16_t> blue;
+
+    Image(image_size size_init, int max_color);
+};
+```
+
+### Members
+
+<ParamField path="size" type="image_size">
+  Image dimensions (width and height)
+</ParamField>
+
+<ParamField path="max_color" type="int">
+  Maximum color value (typically 255 or 65535)
+</ParamField>
+
+<ParamField path="n_colors" type="uint32_t" default="0">
+  Number of unique colors in the image
+</ParamField>
+
+<ParamField path="red" type="std::vector<uint16_t>">
+  Red channel values stored contiguously
+</ParamField>
+
+<ParamField path="green" type="std::vector<uint16_t>">
+  Green channel values stored contiguously
+</ParamField>
+
+<ParamField path="blue" type="std::vector<uint16_t>">
+  Blue channel values stored contiguously
+</ParamField>
+
+### Constructor
+
+```cpp imagesoa.cpp
+Image::Image(image_size size_init, int max_color)
+    : size{size_init}, max_color(max_color),
+red(static_cast<std::vector<uint16_t>::size_type>(size.width * size.height)),
+green(static_cast<std::vector<uint16_t>::size_type>(size.width * size.height)),
+blue(static_cast<std::vector<uint16_t>::size_type>(size.width * size.height)){ }
+```
+
+Initializes the Image with specified dimensions and pre-allocates memory for all color channels.
+
+<ParamField path="size_init" type="image_size" required>
+  Initial image dimensions
+</ParamField>
+
+<ParamField path="max_color" type="int" required>
+  Maximum color value for the image
+</ParamField>
+
+---
+
+## Photo Class
+
+The `Photo` class represents a complete image with metadata and SOA color data.
+
+### Definition
+
+```cpp
+class Photo {
+  public:
+    std::string magicNumber;
+    int width = 0;
+    int height = 0;
+    unsigned int maxColorValue = 0;
+    std::vector<unsigned int> red;
+    std::vector<unsigned int> green;
+    std::vector<unsigned int> blue;
+};
+```
+
+### Members
+
+<ParamField path="magicNumber" type="std::string">
+  PPM format identifier (e.g., "P6")
+</ParamField>
+
+<ParamField path="width" type="int" default="0">
+  Image width in pixels
+</ParamField>
+
+<ParamField path="height" type="int" default="0">
+  Image height in pixels
+</ParamField>
+
+<ParamField path="maxColorValue" type="unsigned int" default="0">
+  Maximum color value (255 for 8-bit, 65535 for 16-bit)
+</ParamField>
+
+<ParamField path="red" type="std::vector<unsigned int>">
+  Red channel values
+</ParamField>
+
+<ParamField path="green" type="std::vector<unsigned int>">
+  Green channel values
+</ParamField>
+
+<ParamField path="blue" type="std::vector<unsigned int>">
+  Blue channel values
+</ParamField>
+
+---
+
+## SOA vs AOS Comparison
+
+<Tabs>
+  <Tab title="SOA (Structure of Arrays)">
+    ```cpp
+    // Separate arrays for each color channel
+    class Image {
+      std::vector<uint16_t> red;   // [R0, R1, R2, R3, ...]
+      std::vector<uint16_t> green; // [G0, G1, G2, G3, ...]
+      std::vector<uint16_t> blue;  // [B0, B1, B2, B3, ...]
+    };
+    
+    // Access pattern
+    for (size_t i = 0; i < image.red.size(); i++) {
+      image.red[i] *= scaleFactor;
+      image.green[i] *= scaleFactor;
+      image.blue[i] *= scaleFactor;
+    }
+    ```
+    
+    **Benefits:**
+    - Better cache locality for channel-wise operations
+    - Easier to vectorize with SIMD instructions
+    - More efficient for operations on single channels
+    - Reduces cache misses when processing one channel at a time
+  </Tab>
+  
+  <Tab title="AOS (Array of Structures)">
+    ```cpp
+    // Pixel structure with interleaved data
+    struct Pixel {
+      int r, g, b;
+    };
+    
+    class Image {
+      std::vector<Pixel> pixels; // [RGB0, RGB1, RGB2, RGB3, ...]
+    };
+    
+    // Access pattern
+    for (size_t i = 0; i < image.pixels.size(); i++) {
+      image.pixels[i].r *= scaleFactor;
+      image.pixels[i].g *= scaleFactor;
+      image.pixels[i].b *= scaleFactor;
+    }
+    ```
+    
+    **Benefits:**
+    - Intuitive pixel-based access
+    - Better for operations on complete pixels
+    - Simpler object model
+    - Easier to pass individual pixels around
+  </Tab>
+</Tabs>
+
+## Memory Layout
+
+<CodeGroup>
+```text SOA Layout
+Memory: [R0][R1][R2][R3]...[G0][G1][G2][G3]...[B0][B1][B2][B3]...
+         └─── Red ────┘     └─── Green ──┘     └─── Blue ───┘
+Contiguous blocks per channel → Better cache utilization
+```
+
+```text AOS Layout
+Memory: [R0,G0,B0][R1,G1,B1][R2,G2,B2][R3,G3,B3]...
+         └─ Pixel ─┘└─ Pixel ─┘└─ Pixel ─┘
+Interleaved data → More cache misses for channel operations
+```
+</CodeGroup>
+
+## Usage Example
+
+```cpp
+#include "imgsoa/imagesoa.hpp"
+
+using namespace imgsoa;
+
+// Create an image
+image_size size{800, 600};
+Image img(size, 255);
+
+// Access color channels
+for (size_t i = 0; i < img.red.size(); i++) {
+  img.red[i] = calculateRed(i);
+  img.green[i] = calculateGreen(i);
+  img.blue[i] = calculateBlue(i);
+}
+
+// Create a photo with metadata
+Photo photo;
+photo.width = 800;
+photo.height = 600;
+photo.maxColorValue = 255;
+photo.red.resize(800 * 600);
+photo.green.resize(800 * 600);
+photo.blue.resize(800 * 600);
+```
+
+## Related
+
+- [SOA Structures](/api/soa/structures) - Supporting data structures
+- [SOA Operations](/api/soa/operations) - Image processing functions

@@ -1,0 +1,537 @@
+---
+title: Testing ImgTool
+description: Complete guide to running unit tests and functional tests with Google Test framework
+---
+
+## Overview
+
+ImgTool includes comprehensive testing with Google Test framework, covering both unit tests for individual components and functional tests for end-to-end validation.
+
+## Test Structure
+
+The testing suite is organized into three categories:
+
+### Unit Tests
+
+- **utest-common**: Tests for common utilities (progargs, binary I/O, info functions)
+- **utest-imgaos**: Tests for AOS image implementation
+- **utest-img-soa**: Tests for SOA image implementation
+
+### Functional Tests
+
+- **ftest-aos**: End-to-end tests for AOS implementation
+- **ftest-soa**: End-to-end tests for SOA implementation
+
+## Running Tests
+
+### Build Tests
+
+Tests are built automatically with the main project:
+
+```bash
+cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release
+cmake --build build-release
+```
+
+<Note>
+  The main CMakeLists.txt enables testing with `enable_testing()` at line 55.
+</Note>
+
+### Run All Unit Tests
+
+<CodeGroup>
+```bash All Tests with CTest
+ctest --test-dir build-release
+```
+
+```bash Verbose Output
+ctest --test-dir build-release --verbose
+```
+
+```bash Individual Test Suite
+./build-release/utest-common/utest-common
+./build-release/utest-imgaos/utest-imgaos
+./build-release/utest-img-soa/utest-img-soa
+```
+</CodeGroup>
+
+## Unit Tests
+
+### utest-common
+
+Tests common library functionality (source/utest-common/utest-common.cpp):
+
+#### Test Cases
+
+<Accordion title="InfoTest.InfoFunction_ValidInput">
+  Validates the info function with valid PPM file:
+  ```cpp
+  TEST_F(InfoTest, InfoFunction_ValidInput)
+  ```
+  
+  - Creates temporary PPM file
+  - Calls info function
+  - Verifies correct output format
+</Accordion>
+
+<Accordion title="ProgArgsCommonTest.CheckArgc">
+  Tests command-line argument count validation:
+  ```cpp
+  TEST(ProgArgsCommonTest, CheckArgc)
+  ```
+  
+  - Verifies minimum argument requirements
+  - Tests with valid and invalid argc values
+</Accordion>
+
+<Accordion title="ProgArgsCommonTest.Pertenencia">
+  Tests operation name validation:
+  ```cpp
+  TEST(ProgArgsCommonTest, Pertenencia)
+  ```
+  
+  - Validates recognized operations: compress, resize, maxlevel, cutfreq, info
+  - Rejects invalid operation names
+</Accordion>
+
+<Accordion title="BinaryTest.ReadWriteBinary">
+  Tests binary I/O operations:
+  ```cpp
+  TEST(BinaryTest, ReadWriteBinary)
+  TEST(BinaryTest, ReadBinaryError)
+  TEST(BinaryTest, WriteBinary)
+  ```
+  
+  - Validates binary read/write for integers and doubles
+  - Tests error handling for invalid streams
+</Accordion>
+
+#### Running Common Tests
+
+```bash
+./build-release/utest-common/utest-common
+```
+
+Expected output:
+```plaintext
+[==========] Running tests from utest-common
+[----------] 7 tests from ProgArgsCommonTest, BinaryTest, InfoTest
+[ RUN      ] ProgArgsCommonTest.CheckArgc
+[       OK ] ProgArgsCommonTest.CheckArgc
+...
+[==========] 7 tests from 3 test suites ran.
+[  PASSED  ] 7 tests.
+```
+
+### utest-imgaos
+
+Tests AOS image implementation with extensive test coverage (source/utest-imgaos/unitest-imgaos.cpp):
+
+#### Test Categories
+
+<Steps>
+  <Step title="Image Construction Tests">
+    ```cpp
+    TEST(ImageTest, ConstructorDifferentSizesAndMaxColor)
+    ```
+    
+    Validates Image constructor with various dimensions and color depths.
+  </Step>
+  
+  <Step title="Color Operations">
+    ```cpp
+    TEST(GetColorsTest, UniqueColors)
+    TEST(GetColorsTest, RepeatedColors)
+    TEST(GetColorsTest, ColorIndices)
+    ```
+    
+    Tests color table generation and indexing.
+  </Step>
+  
+  <Step title="Compression Tests">
+    ```cpp
+    TEST(WriteDataCPPMTest, EightBitColorDepth)
+    TEST(WriteDataCPPMTest, SixteenBitColorDepth)
+    TEST(CompressTest, ValidPPMFile)
+    TEST(CompressTest, InvalidPPMFileFormat)
+    ```
+    
+    Validates compression to CPPM format for 8-bit and 16-bit color depths.
+  </Step>
+  
+  <Step title="File I/O Tests">
+    ```cpp
+    TEST(ImageAOSTest, ReadPPMFunctionFileNotFound)
+    TEST(ImageAOSTest, ReadPPMFunctionInvalidFormat)
+    TEST(ImageAOSTest, WritePPMFunctionSuccess)
+    ```
+    
+    Tests PPM file reading and writing with error handling.
+  </Step>
+  
+  <Step title="CutFreq Tests">
+    ```cpp
+    TEST(ImageAOSTest, CountColorFrequencyWithParams_RepeatedColors)
+    TEST(ImageAOSTest, GetLeastFrequentColors_OneLeastFrequent)
+    TEST(ImageAOSTest, BuildGrid_RepeatedColors)
+    ```
+    
+    Tests color frequency analysis and grid-based color finding.
+  </Step>
+  
+  <Step title="MaxLevel Tests">
+    ```cpp
+    TEST(MaxLevelTest, MaxLevelScaling_255to128)
+    TEST(MaxLevelTest, ScaleTo65535)
+    TEST(MaxLevelTest, ScaleFrom65535to255)
+    ```
+    
+    Validates color depth conversion between 8-bit and 16-bit.
+  </Step>
+  
+  <Step title="Resize Tests">
+    ```cpp
+    TEST(ImageResizeTest, ResizeToLargerSize)
+    TEST(ImageResizeTest, ResizeToSmallerSize)
+    TEST(ImageAOSTest, BilinearInterpolateFunctionCenter)
+    ```
+    
+    Tests bilinear interpolation and image resizing.
+  </Step>
+</Steps>
+
+#### Running AOS Tests
+
+```bash
+./build-release/utest-imgaos/utest-imgaos
+```
+
+<Note>
+  The AOS test suite includes 50+ test cases covering all major image operations.
+</Note>
+
+### utest-img-soa
+
+Tests SOA implementation (source/utest-img-soa/CMakeLists.txt):
+
+```bash
+./build-release/utest-img-soa/utest-img-soa
+```
+
+Links to:
+- `imgsoa` library
+- Google Test (`GTest::gtest_main`)
+- Microsoft GSL
+
+## Functional Tests
+
+### Overview
+
+Functional tests validate end-to-end workflows by comparing output files.
+
+### Test Scripts
+
+Two comparison scripts are provided in both `ftest-aos/` and `ftest-soa/` directories:
+
+#### compare_cppm.sh
+
+Compares compressed CPPM files (source/ftest-aos/compare_cppm.sh):
+
+```bash
+#!/bin/bash
+if [ "$#" -ne 2 ]; then
+    echo "Usage: $0 <image1.cppm> <image2.cppm>"
+    exit 1
+fi
+
+g++ -o ftest-compress ftest-compress.cpp -std=c++11
+./ftest-compress "$1" "$2"
+rm -f ftest-compress
+```
+
+**Usage**:
+```bash
+cd build-release/ftest-aos
+./compare_cppm.sh output1.cppm output2.cppm
+```
+
+<Accordion title="What compare_cppm.sh checks">
+  The script compiles and runs ftest-compress.cpp which compares:
+  - Magic number (C6)
+  - Image dimensions (width, height)
+  - Max color value
+  - Number of color table entries
+  - Color table data (byte-by-byte)
+  - Pixel index data (byte-by-byte)
+</Accordion>
+
+#### compare_images.sh
+
+Compares PPM image files (source/ftest-aos/compare_images.sh):
+
+```bash
+#!/bin/bash
+if [ "$#" -ne 2 ]; then
+    echo "Usage: $0 <image1.ppm> <image2.ppm>"
+    exit 1
+fi
+
+g++ -o compare_images tester.cpp -std=c++11
+./compare_images "$1" "$2"
+rm -f compare_images
+```
+
+**Usage**:
+```bash
+cd build-release/ftest-aos
+./compare_images output1.ppm output2.ppm
+```
+
+### Functional Test Workflow
+
+<Steps>
+  <Step title="Generate test outputs">
+    Run ImgTool operations on test images:
+    ```bash
+    ./build-release/imtool-aos/imtool-aos \
+      input/test.ppm \
+      output/test-aos.cppm \
+      compress
+    ```
+  </Step>
+  
+  <Step title="Generate reference outputs">
+    Generate expected outputs using a verified implementation.
+  </Step>
+  
+  <Step title="Compare outputs">
+    Use comparison scripts:
+    ```bash
+    cd ftest-aos
+    ./compare_cppm.sh ../output/test-aos.cppm ../output/reference.cppm
+    ```
+  </Step>
+  
+  <Step title="Validate results">
+    Check for "The files are identical" message.
+  </Step>
+</Steps>
+
+### CPPM File Format Validation
+
+The functional test for compression validates CPPM format (source/ftest-aos/ftest-compress.cpp:10-18):
+
+```cpp
+struct CPPMFile {
+    std::string magic_number;       // "C6"
+    int width;                      // Image width
+    int height;                     // Image height
+    int max_color_value;            // 255 or 65535
+    int num_color_entries;          // Number of unique colors
+    std::vector<uint8_t> color_table;   // RGB values
+    std::vector<uint8_t> pixel_data;    // Color indices
+};
+```
+
+<Note>
+  CPPM is a custom compressed format that stores unique colors once and uses indices for pixels.
+</Note>
+
+## Google Test Framework Usage
+
+### Test Macros
+
+ImgTool tests use standard Google Test macros:
+
+<CodeGroup>
+```cpp Basic Tests
+// Simple test
+TEST(TestSuiteName, TestName) {
+    EXPECT_EQ(actual, expected);
+    ASSERT_TRUE(condition);
+}
+```
+
+```cpp Test Fixtures
+// Test with setup/teardown
+class MyTest : public ::testing::Test {
+protected:
+    void SetUp() override { /* setup code */ }
+    void TearDown() override { /* cleanup code */ }
+};
+
+TEST_F(MyTest, TestCase) {
+    // test code
+}
+```
+
+```cpp Assertions
+EXPECT_EQ(a, b);     // Continue on failure
+ASSERT_EQ(a, b);     // Stop on failure
+EXPECT_TRUE(cond);
+EXPECT_FALSE(cond);
+EXPECT_NEAR(a, b, tolerance);
+EXPECT_THROW(statement, exception_type);
+```
+</CodeGroup>
+
+### Test Main Function
+
+All test files use Google Test's main:
+
+```cpp
+int main(int argc, char **argv) {
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
+}
+```
+
+## CMake Test Configuration
+
+### Unit Test Targets
+
+Each unit test is configured as an executable with dependencies:
+
+<CodeGroup>
+```cmake utest-common
+add_executable(utest-common
+        utest-common.cpp)
+
+target_link_libraries(utest-common 
+    PRIVATE common 
+    GTest::gtest_main 
+    Microsoft.GSL::GSL)
+```
+
+```cmake utest-imgaos
+add_executable(utest-imgaos
+        unitest-imgaos.cpp)
+
+target_link_libraries(utest-imgaos 
+    PRIVATE imgaos 
+    GTest::gtest_main 
+    Microsoft.GSL::GSL)
+```
+
+```cmake utest-img-soa
+add_executable(utest-img-soa
+        utest-img-soa.cpp)
+
+target_link_libraries(utest-img-soa 
+    PRIVATE imgsoa 
+    GTest::gtest_main 
+    Microsoft.GSL::GSL)
+```
+</CodeGroup>
+
+## Test Coverage
+
+### Common Library Coverage
+
+- Argument parsing (`progargs.cpp`)
+- Binary I/O operations (`binario.cpp`)
+- Info display function (`info.cpp`)
+- Error handling and validation
+
+### AOS Implementation Coverage
+
+- Image construction and memory management
+- PPM file I/O (read/write)
+- Compress operation (PPM to CPPM)
+- Color frequency analysis (cutfreq)
+- Color depth scaling (maxlevel)
+- Image resizing with bilinear interpolation (resize)
+- Color table generation
+- Grid-based color finding
+
+### SOA Implementation Coverage
+
+Similar coverage as AOS but with Structure of Arrays data layout.
+
+## Running Specific Tests
+
+### Filter by Test Name
+
+```bash
+./build-release/utest-imgaos/utest-imgaos --gtest_filter="ImageTest.*"
+```
+
+### Run Tests Multiple Times
+
+```bash
+./build-release/utest-common/utest-common --gtest_repeat=10
+```
+
+### List Available Tests
+
+```bash
+./build-release/utest-imgaos/utest-imgaos --gtest_list_tests
+```
+
+### Shuffle Test Order
+
+```bash
+./build-release/utest-img-soa/utest-img-soa --gtest_shuffle
+```
+
+<Note>
+  Shuffling helps detect test dependencies and order-dependent failures.
+</Note>
+
+## Continuous Integration
+
+For CI/CD pipelines, run all tests with XML output:
+
+```bash
+ctest --test-dir build-release --output-on-failure
+```
+
+Or with Google Test XML reports:
+
+```bash
+./build-release/utest-imgaos/utest-imgaos --gtest_output=xml:test_results.xml
+```
+
+## Troubleshooting
+
+<Accordion title="Tests fail to build">
+  Ensure Google Test was fetched correctly:
+  ```bash
+  cmake -S . -B build-release --fresh
+  cmake --build build-release
+  ```
+</Accordion>
+
+<Accordion title="Tests timeout">
+  Some tests create temporary files. Ensure sufficient disk space and I/O performance.
+</Accordion>
+
+<Accordion title="File not found errors in tests">
+  Unit tests create temporary files in the current directory. Run tests from the build directory:
+  ```bash
+  cd build-release/utest-imgaos
+  ./utest-imgaos
+  ```
+</Accordion>
+
+<Accordion title="Comparison scripts fail">
+  Ensure g++ is installed and supports C++11:
+  ```bash
+  g++ --version
+  ```
+  
+  The scripts compile temporary test executables.
+</Accordion>
+
+## Best Practices
+
+1. **Run tests after every build**: Catch regressions early
+2. **Use Debug builds for test development**: Better error messages
+3. **Add tests for new features**: Maintain test coverage
+4. **Test error conditions**: Not just happy paths
+5. **Clean up temporary files**: Tests create .ppm and .cppm files
+6. **Use descriptive test names**: Make failures easy to understand
+
+<Warning>
+  Some tests create temporary files (test_output.cppm, output.ppm, etc.) in the current directory. Clean these up periodically.
+</Warning>

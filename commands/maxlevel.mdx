@@ -1,0 +1,348 @@
+---
+title: 'maxlevel'
+description: 'Extend color bit depth from 8-bit to 16-bit for higher quality'
+---
+
+The `maxlevel` operation extends the color depth of an image by scaling pixel values to a new maximum color value, typically used to convert 8-bit images (0-255) to 16-bit (0-65535).
+
+## Syntax
+
+```bash
+imtool-<variant> <input.ppm> <output.ppm> maxlevel <max_value>
+```
+
+<ParamField path="input.ppm" type="path" required>
+  Input PPM file in P6 format
+</ParamField>
+
+<ParamField path="output.ppm" type="path" required>
+  Output PPM file with extended bit depth
+</ParamField>
+
+<ParamField path="max_value" type="integer" required>
+  New maximum color value (0 to 65535)
+  
+  Common values:
+  - `255` - 8-bit (no change for 8-bit input)
+  - `65535` - 16-bit (full extension)
+</ParamField>
+
+## How It Works
+
+### Color Normalization Algorithm
+
+1. **Calculate Scale Factor**: `scale = newMaxValue / oldMaxValue`
+2. **Scale Each Pixel**: Multiply every color component by the scale factor
+3. **Write Output**: Save with new max color value in header
+
+<Tabs>
+  <Tab title="AOS Implementation">
+    **Function**: `imgaos::maxlevel()`
+    
+    Location: `imgaos/imageaos.cpp:352-360`
+    
+    ```cpp
+    void maxlevel(Photo& photo, unsigned int newMaxValue) {
+      // Calculate scaling factor
+      double scaleFactor = (double)newMaxValue / photo.maxColorValue;
+      
+      // Scale each pixel
+      for (auto& pixel : photo.pixels) {
+        pixel.r = (int)(pixel.r * scaleFactor);
+        pixel.g = (int)(pixel.g * scaleFactor);
+        pixel.b = (int)(pixel.b * scaleFactor);
+      }
+      
+      // Update max value
+      photo.maxColorValue = newMaxValue;
+    }
+    ```
+    
+    **Photo Structure**: `imgaos/imageaos.hpp:55-62`
+    
+    ```cpp
+    class Photo {
+      public:
+        std::string magicNumber;
+        int width = 0;
+        int height = 0;
+        unsigned int maxColorValue = 0;
+        std::vector<Pixel> pixels;  // AOS: array of RGB structures
+    };
+    ```
+    
+    **Processing Pipeline**: `imgaos/imageaos.cpp:490-516`
+    
+    ```cpp
+    void handle_maxlevel_optionAOS(const std::vector<std::string>& args,
+                                   const parameters_files& params) {
+      // Parse new max value
+      int newMaxValue = stoi(args[4]);
+      
+      // Validate range
+      if (newMaxValue < 0 || newMaxValue > 65535) {
+        cerr << "Error: new max value must be between 0 and 65535.\n";
+        return;
+      }
+      
+      // Load image
+      Photo image;
+      if (!loadPhoto(image, params.input_file)) return;
+      
+      // Apply transformation
+      maxlevel(image, (unsigned int)newMaxValue);
+      
+      // Save result
+      if (!savePhoto(image, params.output_file)) return;
+      
+      cout << "Image processed successfully\n";
+    }
+    ```
+  </Tab>
+  
+  <Tab title="SOA Implementation">
+    **Function**: `imgsoa::maxlevel()`
+    
+    Location: `imgsoa/imagesoa.cpp:340-348`
+    
+    ```cpp
+    void maxlevel(Photo& photo, unsigned int newMaxValue) {
+      // Calculate scaling factor
+      double scaleFactor = (double)newMaxValue / photo.maxColorValue;
+      
+      // Scale each channel separately (SOA approach)
+      for (size_t i = 0; i < photo.red.size(); ++i) {
+        photo.red[i] = (unsigned int)(photo.red[i] * scaleFactor);
+        photo.green[i] = (unsigned int)(photo.green[i] * scaleFactor);
+        photo.blue[i] = (unsigned int)(photo.blue[i] * scaleFactor);
+      }
+      
+      // Update max value
+      photo.maxColorValue = newMaxValue;
+    }
+    ```
+    
+    **Photo Structure**: `imgsoa/imagesoa.hpp:74-84`
+    
+    ```cpp
+    class Photo {
+      public:
+        std::string magicNumber;
+        int width = 0;
+        int height = 0;
+        unsigned int maxColorValue = 0;
+        std::vector<unsigned int> red;    // SOA: separate arrays
+        std::vector<unsigned int> green;
+        std::vector<unsigned int> blue;
+    };
+    ```
+    
+    **Processing Pipeline**: `imgsoa/imagesoa.cpp:350-382`
+    
+    ```cpp
+    void handle_maxlevel_optionSOA(const std::vector<std::string>& args,
+                                   const parameters_files& params) {
+      // Validate argument count
+      if (args.size() != 5) {
+        cerr << "Error: Invalid number of arguments for maxlevel\n";
+        return;
+      }
+      
+      // Parse and validate new max value
+      int newMaxValue = stoi(args[4]);
+      if (newMaxValue < 0 || newMaxValue > 65535) {
+        cerr << "Error: Max value must be between 0 and 65535.\n";
+        return;
+      }
+      
+      // Load, transform, and save
+      Photo photo;
+      if (!loadPhoto(params.input_file, photo)) return;
+      maxlevel(photo, (unsigned int)newMaxValue);
+      if (!savePhoto(params.output_file, photo)) return;
+      
+      cout << "Image processing completed successfully.\n";
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Scaling Calculation
+
+### Example: 8-bit to 16-bit
+
+```
+Original: maxColorValue = 255
+New:      maxColorValue = 65535
+Scale:    65535 / 255 = 257.0
+
+Original pixel: RGB(128, 200, 50)
+Scaled pixel:   RGB(32896, 51400, 12850)
+
+Calculation:
+  R: 128 × 257 = 32896
+  G: 200 × 257 = 51400
+  B: 50 × 257 = 12850
+```
+
+### Precision Preservation
+
+The scaling uses double-precision floating point:
+
+```cpp
+double scaleFactor = (double)newMaxValue / photo.maxColorValue;
+pixel.r = (int)(pixel.r * scaleFactor);
+```
+
+This ensures accurate scaling across the full range without rounding errors.
+
+## Examples
+
+<CodeGroup>
+```bash 8-bit to 16-bit - AOS
+./build-release/imtool-aos/imtool-aos \
+  ./input/lake-large.ppm \
+  ./output/maxlevel-lake-large-aos.ppm \
+  maxlevel 65535
+```
+
+```bash 8-bit to 16-bit - SOA
+./build-release/imtool-soa/imtool-soa \
+  ./input/deer-small.ppm \
+  ./output/maxlevel-deer-small-soa.ppm \
+  maxlevel 65535
+```
+
+```bash Custom Bit Depth
+./build-release/imtool-aos/imtool-aos \
+  ./input/sabatini.ppm \
+  ./output/maxlevel-sabatini-10bit.ppm \
+  maxlevel 1023
+```
+
+```bash With Performance Monitoring
+perf stat -a -e power/energy-pkg/ \
+  ./build-release/imtool-soa/imtool-soa \
+  ./input/lake-small.ppm \
+  ./output/maxlevel-lake-small-soa.ppm \
+  maxlevel 65535
+```
+</CodeGroup>
+
+## Output Format
+
+The output PPM file header reflects the new bit depth:
+
+**8-bit input:**
+```
+P6
+800 600
+255
+<binary data>
+```
+
+**16-bit output:**
+```
+P6
+800 600
+65535
+<binary data>
+```
+
+<Note>
+  When `maxColorValue > 255`, each color component is stored as a 2-byte `uint16_t` in big-endian format.
+</Note>
+
+## Common Use Cases
+
+### 1. Pre-processing for Editing
+
+Extend to 16-bit before performing multiple operations to minimize cumulative rounding errors:
+
+```bash
+# Extend bit depth first
+./imtool-aos input.ppm temp-16bit.ppm maxlevel 65535
+
+# Then apply other operations
+./imtool-aos temp-16bit.ppm resized.ppm resize 2000 2000
+```
+
+### 2. Archival Quality
+
+Convert to 16-bit for long-term archival to preserve maximum color information:
+
+```bash
+./imtool-soa original.ppm archive-16bit.ppm maxlevel 65535
+```
+
+### 3. Downsampling Bit Depth
+
+Reduce from 16-bit to 8-bit:
+
+```bash
+./imtool-aos 16bit-input.ppm 8bit-output.ppm maxlevel 255
+```
+
+## Performance Characteristics
+
+- **Time Complexity**: O(n) where n = width × height
+- **Memory**: Single pass through pixel data
+- **CPU Bound**: Simple multiplication operation per pixel
+- **Cache Friendly**: Sequential memory access
+
+**SOA vs AOS**:
+- **SOA variant**: Better cache performance due to channel-by-channel processing
+- **AOS variant**: All channels processed together, more cache misses
+
+## Validation and Error Handling
+
+<Warning>
+  The maxlevel operation validates:
+  
+  - `max_value` must be between 0 and 65535
+  - Input file must be valid P6 PPM
+  - Output directory must be writable
+  - Exactly 5 command-line arguments required
+</Warning>
+
+**Error messages**:
+
+```bash
+# Invalid max value
+Error: Maxlevel invalid: -100
+
+# Out of range
+Error: new max value must be between 0 and 65535.
+
+# Wrong argument count
+Error: Wrong number of arguments; Needed 5 parameters
+```
+
+## File Size Implications
+
+**8-bit image** (255 max): `width × height × 3 bytes`
+
+**16-bit image** (65535 max): `width × height × 6 bytes`
+
+Extending to 16-bit **doubles the file size**.
+
+<Note>
+  For a 1920×1080 image:
+  - 8-bit: ~6.2 MB
+  - 16-bit: ~12.4 MB
+</Note>
+
+## Bit Depth Comparison
+
+| Max Value | Bits | Bytes/Channel | Colors | Use Case |
+|-----------|------|---------------|--------|----------|
+| 255 | 8 | 1 | 16.7M | Standard images, web |
+| 1023 | 10 | 2 | 1.07B | HDR displays |
+| 4095 | 12 | 2 | 68.7B | Professional photo |
+| 65535 | 16 | 2 | 281T | Medical, scientific |
+
+## Related Commands
+
+- [resize](/commands/resize) - Apply after maxlevel to preserve quality when upscaling
+- [info](/commands/info) - Check current bit depth of an image
+- [compress](/commands/compress) - Works with both 8-bit and 16-bit images

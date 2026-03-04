@@ -1,0 +1,304 @@
+---
+title: 'resize'
+description: 'Scale images using bilinear interpolation for smooth results'
+---
+
+The `resize` operation scales images to new dimensions using bilinear interpolation, which produces smoother results than nearest-neighbor scaling.
+
+## Syntax
+
+```bash
+imtool-<variant> <input.ppm> <output.ppm> resize <width> <height>
+```
+
+<ParamField path="input.ppm" type="path" required>
+  Input PPM file in P6 format
+</ParamField>
+
+<ParamField path="output.ppm" type="path" required>
+  Output resized PPM file
+</ParamField>
+
+<ParamField path="width" type="integer" required>
+  Target width in pixels (must be positive)
+</ParamField>
+
+<ParamField path="height" type="integer" required>
+  Target height in pixels (must be positive)
+</ParamField>
+
+## How It Works
+
+### Bilinear Interpolation Algorithm
+
+For each pixel in the output image:
+
+1. **Map Coordinates**: Calculate corresponding position in source image
+2. **Find Neighbors**: Identify 4 surrounding pixels (top-left, top-right, bottom-left, bottom-right)
+3. **Calculate Weights**: Compute interpolation weights based on fractional position
+4. **Interpolate**: Blend the 4 neighbor colors using computed weights
+
+<Tabs>
+  <Tab title="AOS Implementation">
+    **Function**: `imgaos::resizeImage()`
+    
+    Location: `imgaos/imageaos.cpp:464-488`
+    
+    ```cpp
+    std::vector<std::vector<Pixel>> resizeImage(
+        const std::vector<std::vector<Pixel>>& original,
+        int newWidth, int newHeight) {
+      
+      int originalWidth = original[0].size();
+      int originalHeight = original.size();
+      
+      std::vector<std::vector<Pixel>> resized(
+        newHeight, std::vector<Pixel>(newWidth));
+      
+      // For each output pixel
+      for (size_t y = 0; y < newHeight; ++y) {
+        for (size_t x = 0; x < newWidth; ++x) {
+          // Map to source coordinates
+          double originalX = (double)x * ((originalWidth - 1) / (double)(newWidth - 1));
+          double originalY = (double)y * ((originalHeight - 1) / (double)(newHeight - 1));
+          
+          // Interpolate
+          resized[y][x] = bilinearInterpolate(original, originalX, originalY);
+        }
+      }
+      
+      return resized;
+    }
+    ```
+    
+    **Bilinear Interpolation**: `imgaos/imageaos.cpp:430-461`
+    
+    ```cpp
+    Pixel bilinearInterpolate(
+        const std::vector<std::vector<Pixel>>& original,
+        double xcoord, double ycoord) {
+      
+      int width = original[0].size();
+      int height = original.size();
+      
+      // Get integer coordinates (clamped to image bounds)
+      int xl = max(0, (int)floor(xcoord));
+      int xh = min(width - 1, (int)ceil(xcoord));
+      int yl = max(0, (int)floor(ycoord));
+      int yh = min(height - 1, (int)ceil(ycoord));
+      
+      // Get 4 neighbor pixels
+      const Pixel& p1 = original[yl][xl];  // top-left
+      const Pixel& p2 = original[yl][xh];  // top-right
+      const Pixel& p3 = original[yh][xl];  // bottom-left
+      const Pixel& p4 = original[yh][xh];  // bottom-right
+      
+      // Calculate weights
+      double dx = xcoord - xl;
+      double dy = ycoord - yl;
+      double w1 = (1 - dx) * (1 - dy);
+      double w2 = dx * (1 - dy);
+      double w3 = (1 - dx) * dy;
+      double w4 = dx * dy;
+      
+      // Interpolate each channel
+      auto interpolate = [&](double p1_val, double p2_val, 
+                              double p3_val, double p4_val) {
+        return (uint16_t)((p1_val * w1) + (p2_val * w2) + 
+                          (p3_val * w3) + (p4_val * w4));
+      };
+      
+      return Pixel{
+        .r = interpolate(p1.r, p2.r, p3.r, p4.r),
+        .g = interpolate(p1.g, p2.g, p3.g, p4.g),
+        .b = interpolate(p1.b, p2.b, p3.b, p4.b)
+      };
+    }
+    ```
+  </Tab>
+  
+  <Tab title="SOA Implementation">
+    **Function**: `imgsoa::resizeImage()`
+    
+    Location: `imgsoa/imagesoa.cpp:239-266`
+    
+    ```cpp
+    Picture resizeImage(const Picture& original, int newWidth, int newHeight) {
+      Picture resized;
+      resized.width = newWidth;
+      resized.height = newHeight;
+      resized.r.resize(newWidth * newHeight);
+      resized.g.resize(newWidth * newHeight);
+      resized.b.resize(newWidth * newHeight);
+      
+      for (size_t y = 0; y < newHeight; ++y) {
+        for (size_t x = 0; x < newWidth; ++x) {
+          // Map to source coordinates
+          double originalX = (double)x * ((original.width - 1) / (double)(newWidth - 1));
+          double originalY = (double)y * ((original.height - 1) / (double)(newHeight - 1));
+          
+          Pixel color;
+          bilinearInterpolate(original, originalX, originalY, color);
+          
+          // Store in flattened SOA arrays
+          size_t idx = (y * newWidth) + x;
+          resized.r[idx] = color.red;
+          resized.g[idx] = color.green;
+          resized.b[idx] = color.blue;
+        }
+      }
+      
+      return resized;
+    }
+    ```
+    
+    **Bilinear Interpolation**: `imgsoa/imagesoa.cpp:205-237`
+    
+    ```cpp
+    void bilinearInterpolate(const Picture& original, 
+                             double xcoord, double ycoord, 
+                             Pixel& color) {
+      
+      auto getClampedIndex = [](double value, size_t max) {
+        return clamp((size_t)value, 0UL, max);
+      };
+      
+      // Get 4 neighbor pixel indices
+      size_t xl = getClampedIndex(floor(xcoord), original.width - 1);
+      size_t xh = getClampedIndex(ceil(xcoord), original.width - 1);
+      size_t yl = getClampedIndex(floor(ycoord), original.height - 1);
+      size_t yh = getClampedIndex(ceil(ycoord), original.height - 1);
+      
+      // Calculate flat array indices
+      size_t idx1 = (yl * original.width) + xl;
+      size_t idx2 = (yl * original.width) + xh;
+      size_t idx3 = (yh * original.width) + xl;
+      size_t idx4 = (yh * original.width) + xh;
+      
+      // Calculate weights
+      double xWeight = xcoord - (double)xl;
+      double yWeight = ycoord - (double)yl;
+      
+      auto interpolate = [](double w1, double w2, double w3, double w4,
+                            uint8_t c1, uint8_t c2, uint8_t c3, uint8_t c4) {
+        return (uint8_t)((w1 * c1) + (w2 * c2) + (w3 * c3) + (w4 * c4));
+      };
+      
+      // Interpolate each channel separately
+      color.red = interpolate((1-xWeight)*(1-yWeight), xWeight*(1-yWeight),
+                              (1-xWeight)*yWeight, xWeight*yWeight,
+                              original.r[idx1], original.r[idx2], 
+                              original.r[idx3], original.r[idx4]);
+      color.green = interpolate((1-xWeight)*(1-yWeight), xWeight*(1-yWeight),
+                                (1-xWeight)*yWeight, xWeight*yWeight,
+                                original.g[idx1], original.g[idx2], 
+                                original.g[idx3], original.g[idx4]);
+      color.blue = interpolate((1-xWeight)*(1-yWeight), xWeight*(1-yWeight),
+                               (1-xWeight)*yWeight, xWeight*yWeight,
+                               original.b[idx1], original.b[idx2], 
+                               original.b[idx3], original.b[idx4]);
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Interpolation Visualization
+
+```
+Original pixel grid:        Output pixel position:
+
+  p1 -------- p2              weight calculation:
+  |            |               w1 = (1-dx) * (1-dy)  [top-left]
+  |     *      |               w2 = dx * (1-dy)      [top-right]
+  |   (x,y)    |               w3 = (1-dx) * dy      [bottom-left]
+  |            |               w4 = dx * dy          [bottom-right]
+  p3 -------- p4
+
+  Final color = p1*w1 + p2*w2 + p3*w3 + p4*w4
+```
+
+The asterisk (*) represents the output pixel position mapped to the input image. The fractional part determines the interpolation weights.
+
+## Examples
+
+<CodeGroup>
+```bash Upscale - AOS
+./build-release/imtool-aos/imtool-aos \
+  ./input/lake-small.ppm \
+  ./output/resize-lake-small-aos.ppm \
+  resize 8000 8000
+```
+
+```bash Upscale - SOA
+./build-release/imtool-soa/imtool-soa \
+  ./input/deer-large.ppm \
+  ./output/resize-deer-large-soa.ppm \
+  resize 8000 8000
+```
+
+```bash Downscale
+./build-release/imtool-aos/imtool-aos \
+  ./input/sabatini.ppm \
+  ./output/resize-sabatini-small.ppm \
+  resize 800 600
+```
+
+```bash With Performance Monitoring
+perf stat -a -e power/energy-pkg/ \
+  ./build-release/imtool-soa/imtool-soa \
+  ./input/lake-large.ppm \
+  ./output/resize-lake-large-soa.ppm \
+  resize 8000 8000
+```
+</CodeGroup>
+
+## Output Format
+
+The output is always P6 PPM format with:
+- Magic number: `P6`
+- Max color value: `255` (8-bit)
+- Binary RGB data for each pixel
+
+<Note>
+  Even if the input is 16-bit, the output is always clamped to 8-bit (0-255) after interpolation.
+</Note>
+
+## Performance Characteristics
+
+- **Time Complexity**: O(newWidth × newHeight) - processes each output pixel once
+- **Space Complexity**: O(originalWidth × originalHeight + newWidth × newHeight)
+- **Memory Access Pattern**:
+  - **AOS**: Better for this operation since all channels are accessed together
+  - **SOA**: May have more cache misses due to separate channel arrays
+
+## Quality Considerations
+
+**Bilinear interpolation provides**:
+- Smooth edges when upscaling
+- Better quality than nearest-neighbor
+- Reasonable performance (4 pixel reads per output pixel)
+
+**Limitations**:
+- Not as high quality as bicubic interpolation
+- May blur sharp edges when downscaling significantly
+- No anti-aliasing when downscaling
+
+<Warning>
+  For best results when downscaling, consider using specialized tools with proper anti-aliasing filters.
+</Warning>
+
+## Edge Handling
+
+Pixels near image edges are clamped:
+
+```cpp
+int xl = max(0, (int)floor(xcoord));
+int xh = min(width - 1, (int)ceil(xcoord));
+```
+
+This ensures no out-of-bounds memory access while maintaining aspect ratio.
+
+## Related Commands
+
+- [info](/commands/info) - Check original dimensions before resizing
+- [maxlevel](/commands/maxlevel) - Extend bit depth before upscaling to preserve quality

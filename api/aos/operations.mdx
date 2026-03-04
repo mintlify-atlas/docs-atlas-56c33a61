@@ -1,0 +1,658 @@
+---
+title: 'Image Operations'
+description: 'Core image processing functions in the AOS implementation'
+---
+
+## compress()
+
+Compresses a PPM image into a custom CPPM format with indexed color table.
+
+### Signature
+
+```cpp imageaos.hpp
+void compress(progargsCommon::parameters_files & params);
+```
+
+### Parameters
+
+<ParamField path="params" type="progargsCommon::parameters_files&" required>
+  Structure containing input and output file paths
+</ParamField>
+
+### Implementation Details
+
+The function performs the following steps:
+
+1. **Load PPM file**: Reads header (P6 format) and pixel data
+2. **Build color table**: Creates a map of unique colors with indices
+3. **Write CPPM format**: Outputs compressed format with color table and indices
+
+<CodeGroup>
+```cpp Implementation imageaos.cpp:85
+void compress(progargsCommon::parameters_files &params) {
+  std::ifstream input(params.input_file, std::ios::binary);
+
+  if (input.fail()) {
+    std::cerr << "Error al abrir el fichero " << params.input_file << '\n';
+    return;
+  }
+
+  std::string identification;
+  int width = 0, height = 0, max_color = 0;
+  input >> identification >> width >> height >> max_color;
+  input.get();
+  
+  if (strcmp(identification.c_str(), "P6") != 0) {
+    std::cerr << "Invalid file type, must be PPM format\n";
+    return;
+  }
+
+  Image picture({.width=width, .height=height}, max_color);
+  
+  // Read pixels based on color depth
+  for(std::size_t i = 0; i < picture.pixels.size(); i++) {
+    if (picture.max_color <= 255) {
+      picture.pixels[i].r = static_cast<int>(binario::read_binary<uint8_t>(input));
+      picture.pixels[i].g = static_cast<int>(binario::read_binary<uint8_t>(input));
+      picture.pixels[i].b = static_cast<int>(binario::read_binary<uint8_t>(input));
+    } else {
+      picture.pixels[i].r = static_cast<int>(binario::read_binary<uint16_t>(input));
+      picture.pixels[i].g = static_cast<int>(binario::read_binary<uint16_t>(input));
+      picture.pixels[i].b = static_cast<int>(binario::read_binary<uint16_t>(input));
+    }
+  }
+
+  std::map<Pixel, uint32_t> colorlist = getColors(picture.pixels, picture);
+  write_dataCPPM(picture, colorlist, params.output_file);
+}
+```
+
+```cpp Usage Example
+progargsCommon::parameters_files params{
+    .input_file = "input.ppm",
+    .output_file = "output.cppm"
+};
+
+compress(params);
+```
+</CodeGroup>
+
+---
+
+## resizeImage()
+
+Resizes an image using bilinear interpolation.
+
+### Signature
+
+```cpp imageaos.hpp
+std::vector<std::vector<Pixel>> resizeImage(
+    std::vector<std::vector<Pixel>> const & original,
+    int newWidth, 
+    int newHeight
+);
+```
+
+### Parameters
+
+<ParamField path="original" type="const std::vector<std::vector<Pixel>>&" required>
+  2D vector containing the original image pixels
+</ParamField>
+
+<ParamField path="newWidth" type="int" required>
+  Target width for the resized image
+</ParamField>
+
+<ParamField path="newHeight" type="int" required>
+  Target height for the resized image
+</ParamField>
+
+### Returns
+
+<ResponseField name="return" type="std::vector<std::vector<Pixel>>">
+  2D vector containing the resized image with bilinear interpolation applied
+</ResponseField>
+
+### Implementation
+
+```cpp imageaos.cpp:464
+std::vector<std::vector<Pixel>> resizeImage(
+    std::vector<std::vector<Pixel>> const & original,
+    int newWidth, int newHeight) {
+  
+  int const originalWidth = static_cast<int>(original[0].size());
+  int const originalHeight = static_cast<int>(original.size());
+  
+  std::vector<std::vector<Pixel>> resized(
+      static_cast<unsigned long>(newHeight),
+      std::vector<Pixel>(static_cast<unsigned long>(newWidth)));
+
+  for (std::size_t y_ = 0; y_ < static_cast<std::size_t>(newHeight); ++y_) {
+    for (std::size_t x_ = 0; x_ < static_cast<std::size_t>(newWidth); ++x_) {
+      auto const originalX = static_cast<double>(x_) * 
+          (static_cast<double>(originalWidth - 1) / 
+           static_cast<double>(newWidth - 1));
+      auto const originalY = static_cast<double>(y_) * 
+          (static_cast<double>(originalHeight - 1) / 
+           static_cast<double>(newHeight - 1));
+      
+      resized[y_][x_] = bilinearInterpolate(original, originalX, originalY);
+    }
+  }
+  return resized;
+}
+```
+
+### Usage Example
+
+```cpp
+std::vector<std::vector<Pixel>> original;
+loadPPM("input.ppm", original);
+
+// Resize to 1920x1080
+auto resized = resizeImage(original, 1920, 1080);
+
+savePPM("output.ppm", resized);
+```
+
+---
+
+## maxlevel()
+
+Adjusts the maximum color value of an image by scaling all pixel values.
+
+### Signature
+
+```cpp imageaos.hpp
+void maxlevel(Photo& photo, unsigned int newMaxValue);
+```
+
+### Parameters
+
+<ParamField path="photo" type="Photo&" required>
+  Photo object to modify (passed by reference)
+</ParamField>
+
+<ParamField path="newMaxValue" type="unsigned int" required>
+  New maximum color value (must be between 0 and 65535)
+</ParamField>
+
+### Implementation
+
+```cpp imageaos.cpp:352
+void maxlevel(Photo& photo, unsigned int newMaxValue) {
+  double const scaleFactor = static_cast<double>(newMaxValue) / photo.maxColorValue;
+  
+  for (auto& pixel : photo.pixels) {
+    pixel.r = static_cast<int>(pixel.r * scaleFactor);
+    pixel.g = static_cast<int>(pixel.g * scaleFactor);
+    pixel.b = static_cast<int>(pixel.b * scaleFactor);
+  }
+  
+  photo.maxColorValue = newMaxValue;
+}
+```
+
+### Usage Example
+
+```cpp
+Photo photo;
+loadPhoto(photo, "input.ppm");
+
+// Convert from 8-bit (255) to 16-bit (65535)
+maxlevel(photo, 65535);
+
+savePhoto(photo, "output_16bit.ppm");
+
+// Convert to custom max value
+maxlevel(photo, 1023);  // 10-bit color
+```
+
+---
+
+## cutfreq()
+
+Removes the least frequent colors from an image by replacing them with the closest remaining colors.
+
+### Signature
+
+```cpp imageaos.hpp
+void cutfreq(CutFreqParams& params);
+```
+
+### Parameters
+
+<ParamField path="params" type="CutFreqParams&" required>
+  Structure containing image data, dimensions, and number of colors to remove
+</ParamField>
+
+### CutFreqParams Structure
+
+```cpp imageaos.hpp:99
+struct CutFreqParams {
+  std::vector<Pixel> image;
+  img_size size;
+  int n;
+
+  CutFreqParams(std::vector<Pixel> img, img_size size_init, int num)
+    : image(std::move(img)), size(size_init), n(num) { }
+};
+```
+
+<ParamField path="image" type="std::vector<Pixel>" required>
+  Vector containing all image pixels
+</ParamField>
+
+<ParamField path="size" type="img_size" required>
+  Image dimensions (width and height)
+</ParamField>
+
+<ParamField path="n" type="int" required>
+  Number of least frequent colors to remove (must be >= 1)
+</ParamField>
+
+### Algorithm
+
+<Steps>
+  <Step title="Count Color Frequencies">
+    Uses `countColorFrequencyWithParams()` to build a frequency map
+  </Step>
+  
+  <Step title="Identify Least Frequent">
+    Calls `getLeastFrequentColors()` to find the n least common colors
+  </Step>
+  
+  <Step title="Build Spatial Grid">
+    Creates an optimized grid structure for fast color lookup using `buildGrid()`
+  </Step>
+  
+  <Step title="Find Replacements">
+    For each color to remove, finds the closest remaining color using `findClosestColorOptimized()`
+  </Step>
+  
+  <Step title="Replace Pixels">
+    Replaces all occurrences of removed colors with their closest matches
+  </Step>
+</Steps>
+
+### Implementation
+
+```cpp imageaos.cpp:250
+void cutfreq(CutFreqParams& params) {
+  if (params.n < 1) {
+    throw std::invalid_argument("Error: cutfreq no valido: " + std::to_string(params.n));
+  }
+
+  auto frequencyMap = countColorFrequencyWithParams(params);
+  auto colorsToRemove = getLeastFrequentColors(frequencyMap, params.n);
+  std::unordered_set<Pixel, PixelHash> const colorsToRemoveSet(
+      colorsToRemove.begin(), colorsToRemove.end());
+
+  auto grid = buildGrid(params.image, GRID_SIZE);
+
+  std::unordered_map<Pixel, Pixel, PixelHash> replacementMap;
+  for (const auto& color : colorsToRemove) {
+    Pixel const closestColor = findClosestColorOptimized(color, grid, GRID_SIZE);
+    replacementMap[color] = closestColor;
+  }
+
+  std::unordered_map<Pixel, Pixel, PixelHash> colorCache;
+  for (auto& pixel : params.image) {
+    auto cacheIter = colorCache.find(pixel);
+    if (cacheIter != colorCache.end()) {
+      pixel = cacheIter->second;
+    } else {
+      auto iter = replacementMap.find(pixel);
+      if (iter != replacementMap.end()) {
+        pixel = iter->second;
+        colorCache[pixel] = iter->second;
+      }
+    }
+  }
+}
+```
+
+### Usage Example
+
+```cpp
+std::size_t width = 0, height = 0;
+std::vector<Pixel> image = readPPM("input.ppm", width, height);
+
+// Remove 100 least frequent colors
+CutFreqParams params(image, {.width = width, .height = height}, 100);
+cutfreq(params);
+
+writePPM("output.ppm", params.image, width, height);
+```
+
+---
+
+## Helper Functions
+
+### getPixels()
+
+Extracts pixel data from an image file.
+
+```cpp imageaos.hpp
+void getPixels(std::string const & input_file, Image & picture);
+```
+
+<ParamField path="input_file" type="const std::string&" required>
+  Path to the input image file
+</ParamField>
+
+<ParamField path="picture" type="Image&" required>
+  Image object to populate with pixel data
+</ParamField>
+
+---
+
+### getColors()
+
+Builds a color table mapping unique pixels to indices.
+
+```cpp imageaos.hpp
+std::map<Pixel, uint32_t> getColors(
+    std::vector<Pixel>& input, 
+    Image & picture
+);
+```
+
+<ParamField path="input" type="std::vector<Pixel>&" required>
+  Vector of pixels to analyze
+</ParamField>
+
+<ParamField path="picture" type="Image&" required>
+  Image object that will have its `colors` field updated
+</ParamField>
+
+<ResponseField name="return" type="std::map<Pixel, uint32_t>">
+  Map from Pixel to index in color table
+</ResponseField>
+
+**Example:**
+
+```cpp imageaos.cpp:27
+std::map<Pixel, uint32_t> getColors(std::vector<Pixel>& input, Image & picture){
+  std::map<Pixel, uint32_t> color_table;
+
+  for (const auto& color : input) {
+    if (color_table.find(color) == color_table.end()) {
+      color_table[color] = 0;
+      picture.colors++;
+    }
+  }
+  
+  uint32_t indice = 0;
+  for (auto [color, index] : color_table) {
+    color_table[color] = indice;
+    indice++;
+  }
+
+  return color_table;
+}
+```
+
+---
+
+### countColorFrequencyWithParams()
+
+Counts the occurrence frequency of each color in an image.
+
+```cpp imageaos.hpp
+std::unordered_map<Pixel, int, PixelHash> 
+countColorFrequencyWithParams(CutFreqParams const & params);
+```
+
+<ParamField path="params" type="const CutFreqParams&" required>
+  Parameters containing the image to analyze
+</ParamField>
+
+<ResponseField name="return" type="std::unordered_map<Pixel, int, PixelHash>">
+  Map from Pixel to its frequency count
+</ResponseField>
+
+```cpp imageaos.cpp:173
+std::unordered_map<Pixel, int, PixelHash> 
+countColorFrequencyWithParams(const CutFreqParams& params) {
+  std::unordered_map<Pixel, int, PixelHash> frequencyMap;
+
+  for (const auto& pixel : params.image) {
+    frequencyMap[pixel]++;
+  }
+
+  return frequencyMap;
+}
+```
+
+---
+
+### getLeastFrequentColors()
+
+Identifies the n least frequent colors in a frequency map.
+
+```cpp imageaos.hpp
+std::vector<Pixel> getLeastFrequentColors(
+    std::unordered_map<Pixel, int, PixelHash> frequencyMap, 
+    int n
+);
+```
+
+<ParamField path="frequencyMap" type="std::unordered_map<Pixel, int, PixelHash>" required>
+  Map of colors to their frequencies
+</ParamField>
+
+<ParamField path="n" type="int" required>
+  Number of least frequent colors to return
+</ParamField>
+
+<ResponseField name="return" type="std::vector<Pixel>">
+  Vector of the n least frequent pixels, sorted by frequency (ascending) then by RGB components (descending)
+</ResponseField>
+
+---
+
+### buildGrid()
+
+Builds a spatial grid structure for optimized color searches.
+
+```cpp imageaos.hpp
+std::unordered_map<int, std::vector<Pixel>> buildGrid(
+    const std::vector<Pixel>& image, 
+    int gridSize
+);
+```
+
+<ParamField path="image" type="const std::vector<Pixel>&" required>
+  Image pixels to organize into grid
+</ParamField>
+
+<ParamField path="gridSize" type="int" required>
+  Size of each grid cell (typically 8)
+</ParamField>
+
+<ResponseField name="return" type="std::unordered_map<int, std::vector<Pixel>>">
+  Grid structure mapping grid keys to vectors of pixels in that cell
+</ResponseField>
+
+**Grid Key Calculation:**
+
+```cpp imageaos.cpp:216
+int const key = ((pixel.r / gridSize) * RED_MULTIPLIER) + 
+                ((pixel.g / gridSize) * GREEN_MULTIPLIER) + 
+                (pixel.b / gridSize);
+```
+
+Where:
+- `RED_MULTIPLIER = 10000`
+- `GREEN_MULTIPLIER = 100`
+- `GRID_SIZE = 8` (default)
+
+---
+
+### findClosestColorOptimized()
+
+Finds the closest color using grid-based spatial lookup.
+
+```cpp imageaos.hpp
+Pixel findClosestColorOptimized(
+    const Pixel& color,
+    const std::unordered_map<int, std::vector<Pixel>>& grid, 
+    int gridSize
+);
+```
+
+<ParamField path="color" type="const Pixel&" required>
+  Target color to find closest match for
+</ParamField>
+
+<ParamField path="grid" type="const std::unordered_map<int, std::vector<Pixel>>&" required>
+  Grid structure from `buildGrid()`
+</ParamField>
+
+<ParamField path="gridSize" type="int" required>
+  Grid cell size (must match the size used in `buildGrid()`)
+</ParamField>
+
+<ResponseField name="return" type="Pixel">
+  Closest matching pixel based on Euclidean distance in RGB space
+</ResponseField>
+
+---
+
+### bilinearInterpolate()
+
+Performs bilinear interpolation for a single pixel.
+
+```cpp imageaos.hpp
+Pixel bilinearInterpolate(
+    std::vector<std::vector<Pixel>> const & original, 
+    double xcoord,
+    double ycoord
+);
+```
+
+<ParamField path="original" type="const std::vector<std::vector<Pixel>>&" required>
+  Original image data
+</ParamField>
+
+<ParamField path="xcoord" type="double" required>
+  X coordinate (can be fractional)
+</ParamField>
+
+<ParamField path="ycoord" type="double" required>
+  Y coordinate (can be fractional)
+</ParamField>
+
+<ResponseField name="return" type="Pixel">
+  Interpolated pixel value at the specified coordinates
+</ResponseField>
+
+---
+
+### clamp()
+
+Clamps a value between minimum and maximum bounds.
+
+```cpp imageaos.hpp
+int clamp(int value, int minValue, int maxValue);
+```
+
+<ParamField path="value" type="int" required>
+  Value to clamp
+</ParamField>
+
+<ParamField path="minValue" type="int" required>
+  Minimum allowed value
+</ParamField>
+
+<ParamField path="maxValue" type="int" required>
+  Maximum allowed value
+</ParamField>
+
+<ResponseField name="return" type="int">
+  Clamped value between minValue and maxValue
+</ResponseField>
+
+```cpp imageaos.cpp:425
+int clamp(int value, int minValue, int maxValue) {
+  return std::max(minValue, std::min(value, maxValue));
+}
+```
+
+---
+
+## File I/O Functions
+
+### readPPM()
+
+Reads a PPM file into a 1D pixel vector.
+
+```cpp imageaos.hpp
+std::vector<Pixel> readPPM(
+    std::string const & filename, 
+    std::size_t & width, 
+    std::size_t & height
+);
+```
+
+### writePPM()
+
+Writes a 1D pixel vector to a PPM file.
+
+```cpp imageaos.hpp
+void writePPM(
+    std::string const & filename, 
+    std::vector<Pixel> const & image, 
+    std::size_t width, 
+    std::size_t height
+);
+```
+
+### loadPPM()
+
+Loads a PPM file into a 2D pixel vector.
+
+```cpp imageaos.hpp
+bool loadPPM(
+    std::string const & filename, 
+    std::vector<std::vector<Pixel>> & image
+);
+```
+
+### savePPM()
+
+Saves a 2D pixel vector to a PPM file.
+
+```cpp imageaos.hpp
+bool savePPM(
+    std::string const & filename, 
+    std::vector<std::vector<Pixel>> const & image
+);
+```
+
+---
+
+## Constants
+
+```cpp imageaos.hpp
+constexpr int GRID_SIZE = 8;
+constexpr int RED_MULTIPLIER = 10000;
+constexpr int GREEN_MULTIPLIER = 100;
+constexpr int MAX_COLOR_VALUE = 255;
+constexpr int MAX_COLOR_VALUE_EXTENDED = 65535;
+static constexpr int kMaxColorValue = 255;
+static constexpr int kMaxLineLength = 256;
+```
+
+<ResponseField name="GRID_SIZE" type="constexpr int">
+  Default grid cell size for spatial optimization (8)
+</ResponseField>
+
+<ResponseField name="RED_MULTIPLIER" type="constexpr int">
+  Multiplier for red component in grid key calculation (10000)
+</ResponseField>
+
+<ResponseField name="GREEN_MULTIPLIER" type="constexpr int">
+  Multiplier for green component in grid key calculation (100)
+</ResponseField>

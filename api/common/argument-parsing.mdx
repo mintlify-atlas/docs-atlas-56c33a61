@@ -1,0 +1,328 @@
+---
+title: 'Argument Parsing'
+description: 'Command-line argument validation and parsing utilities'
+---
+
+## Overview
+
+The `progargsCommon` namespace provides utilities for validating and parsing command-line arguments for ImgTool operations.
+
+## Constants
+
+### MAX_COLOR_VALUE_16BIT
+
+Maximum color value for 16-bit image processing.
+
+```cpp
+constexpr int MAX_COLOR_VALUE_16BIT = 65535;
+```
+
+**Location**: `common/progargs.hpp:8`
+
+---
+
+## Structures
+
+### parameters_files
+
+Stores input and output file paths for image operations.
+
+```cpp
+struct parameters_files {
+    std::string input_file;
+    std::string output_file;
+};
+```
+
+<ResponseField name="input_file" type="std::string">
+  Path to the input image file
+</ResponseField>
+
+<ResponseField name="output_file" type="std::string">
+  Path to the output image file
+</ResponseField>
+
+**Location**: `common/progargs.hpp:10`
+
+#### Example
+
+```cpp
+#include "common/progargs.hpp"
+
+progargsCommon::parameters_files params;
+params.input_file = "input.ppm";
+params.output_file = "output.ppm";
+```
+
+---
+
+## Functions
+
+### check_argc
+
+Validates that the minimum number of command-line arguments is provided.
+
+```cpp
+bool check_argc(int &argc)
+```
+
+<ParamField path="argc" type="int&" required>
+  Number of command-line arguments (passed by reference)
+</ParamField>
+
+<ResponseField name="return" type="bool">
+  Returns `true` if argc >= 4, `false` otherwise
+</ResponseField>
+
+**Location**: `common/progargs.cpp:11`
+
+#### Example
+
+```cpp
+#include "common/progargs.hpp"
+
+int main(int argc, char* argv[]) {
+    if (!progargsCommon::check_argc(argc)) {
+        std::cerr << "Insufficient arguments provided" << std::endl;
+        return 1;
+    }
+    // Continue with argument processing
+}
+```
+
+---
+
+### args_checker
+
+Validates command-line arguments based on the operation type and ensures the correct number of parameters.
+
+```cpp
+bool args_checker(std::vector<std::string> const &args)
+```
+
+<ParamField path="args" type="std::vector<std::string> const&" required>
+  Vector of command-line arguments to validate
+</ParamField>
+
+<ResponseField name="return" type="bool">
+  Returns `true` if arguments are valid for the specified operation, `false` otherwise
+</ResponseField>
+
+**Location**: `common/progargs.cpp:14`
+
+#### Operation Requirements
+
+The function validates arguments based on the operation (args[3]):
+
+<ResponseField name="compress" type="4 parameters">
+  Compression operation requires exactly 4 arguments
+</ResponseField>
+
+<ResponseField name="resize" type="6 parameters">
+  Resize operation requires exactly 6 arguments (includes width and height)
+</ResponseField>
+
+<ResponseField name="maxlevel" type="5 parameters">
+  Max level adjustment requires exactly 5 arguments (includes new max value)
+</ResponseField>
+
+<ResponseField name="cutfreq" type="5 parameters">
+  Frequency cutoff operation requires exactly 5 arguments (includes cutoff value)
+</ResponseField>
+
+#### Error Messages
+
+The function outputs specific error messages:
+- "Error : Wrong number of arguments; Needed X parameters"
+- "Wrong operation introduced; [operation] is not a valid operation"
+
+#### Example
+
+<CodeGroup>
+```cpp Valid compress operation
+#include "common/progargs.hpp"
+#include <vector>
+#include <string>
+
+std::vector<std::string> args = {
+    "./imgtool",
+    "input.ppm",
+    "output.ppm",
+    "compress"
+};
+
+if (progargsCommon::args_checker(args)) {
+    std::cout << "Arguments valid for compress operation" << std::endl;
+}
+```
+
+```cpp Valid resize operation
+#include "common/progargs.hpp"
+#include <vector>
+#include <string>
+
+std::vector<std::string> args = {
+    "./imgtool",
+    "input.ppm",
+    "output.ppm",
+    "resize",
+    "1920",
+    "1080"
+};
+
+if (progargsCommon::args_checker(args)) {
+    std::cout << "Arguments valid for resize operation" << std::endl;
+}
+```
+
+```cpp Invalid operation
+#include "common/progargs.hpp"
+#include <vector>
+#include <string>
+
+std::vector<std::string> args = {
+    "./imgtool",
+    "input.ppm",
+    "output.ppm",
+    "invalid_op"
+};
+
+if (!progargsCommon::args_checker(args)) {
+    std::cerr << "Invalid operation specified" << std::endl;
+}
+```
+</CodeGroup>
+
+---
+
+### pertenencia
+
+Checks if a given operation name is valid and supported.
+
+```cpp
+bool pertenencia(std::string const & operation)
+```
+
+<ParamField path="operation" type="std::string const&" required>
+  Operation name to validate
+</ParamField>
+
+<ResponseField name="return" type="bool">
+  Returns `true` if the operation is in the list of valid operations, `false` otherwise
+</ResponseField>
+
+**Location**: `common/progargs.cpp:51`
+
+#### Valid Operations
+
+The function recognizes the following operations:
+
+<ResponseField name="compress" type="string">
+  Image compression operation
+</ResponseField>
+
+<ResponseField name="resize" type="string">
+  Image resizing operation
+</ResponseField>
+
+<ResponseField name="cutfreq" type="string">
+  Frequency cutoff operation
+</ResponseField>
+
+<ResponseField name="maxlevel" type="string">
+  Maximum color level adjustment
+</ResponseField>
+
+<ResponseField name="info" type="string">
+  Display image information
+</ResponseField>
+
+#### Example
+
+```cpp
+#include "common/progargs.hpp"
+
+if (progargsCommon::pertenencia("compress")) {
+    std::cout << "compress is a valid operation" << std::endl;
+}
+
+if (!progargsCommon::pertenencia("invalid")) {
+    std::cerr << "invalid is not a supported operation" << std::endl;
+}
+```
+
+---
+
+## Complete Usage Example
+
+<CodeGroup>
+```cpp Basic argument parsing
+#include "common/progargs.hpp"
+#include <vector>
+#include <string>
+#include <iostream>
+
+int main(int argc, char* argv[]) {
+    // Check minimum argument count
+    if (!progargsCommon::check_argc(argc)) {
+        std::cerr << "Usage: imgtool <input> <output> <operation> [params...]" << std::endl;
+        return 1;
+    }
+
+    // Convert to vector for easier handling
+    std::vector<std::string> args(argv, argv + argc);
+
+    // Validate arguments
+    if (!progargsCommon::args_checker(args)) {
+        return 1;
+    }
+
+    // Extract file parameters
+    progargsCommon::parameters_files params;
+    params.input_file = args[1];
+    params.output_file = args[2];
+    std::string operation = args[3];
+
+    std::cout << "Input: " << params.input_file << std::endl;
+    std::cout << "Output: " << params.output_file << std::endl;
+    std::cout << "Operation: " << operation << std::endl;
+
+    return 0;
+}
+```
+
+```cpp With operation validation
+#include "common/progargs.hpp"
+#include <vector>
+#include <string>
+#include <iostream>
+
+int main(int argc, char* argv[]) {
+    if (!progargsCommon::check_argc(argc)) {
+        return 1;
+    }
+
+    std::vector<std::string> args(argv, argv + argc);
+    std::string operation = args[3];
+
+    // Check if operation is valid
+    if (!progargsCommon::pertenencia(operation)) {
+        std::cerr << "Invalid operation: " << operation << std::endl;
+        std::cerr << "Valid operations: compress, resize, cutfreq, maxlevel, info" << std::endl;
+        return 1;
+    }
+
+    // Validate full argument list
+    if (!progargsCommon::args_checker(args)) {
+        return 1;
+    }
+
+    // Process operation
+    progargsCommon::parameters_files params;
+    params.input_file = args[1];
+    params.output_file = args[2];
+
+    return 0;
+}
+```
+</CodeGroup>

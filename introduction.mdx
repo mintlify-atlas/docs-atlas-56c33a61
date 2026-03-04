@@ -1,0 +1,191 @@
+---
+title: Introduction
+description: High-performance C++ image processing tool with dual memory layout implementations
+---
+
+<div className="relative overflow-hidden bg-gradient-to-br from-[#1e40af] via-[#2563eb] to-[#60a5fa] py-20 rounded-2xl">
+  <div className="max-w-7xl mx-auto px-6 lg:px-8">
+    <div className="lg:grid lg:grid-cols-12 lg:gap-8">
+      <div className="lg:col-span-7">
+        <h1 className="text-4xl font-bold tracking-tight text-white sm:text-5xl md:text-6xl">
+          ImgTool Documentation
+        </h1>
+        <p className="mt-6 text-lg text-blue-100 max-w-2xl">
+          A high-performance C++ command-line tool for processing PPM images with dual memory layout implementations (AOS vs SOA) designed for performance analysis and comparison.
+        </p>
+        <div className="mt-8 flex flex-wrap gap-4">
+          <a
+            href="/quickstart"
+            className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-lg text-white bg-white/20 hover:bg-white/30 backdrop-blur-sm transition-colors"
+          >
+            Get started
+          </a>
+          <a
+            href="/commands/overview"
+            className="inline-flex items-center px-6 py-3 border border-white/30 text-base font-medium rounded-lg text-white bg-white/10 hover:bg-white/20 backdrop-blur-sm transition-colors"
+          >
+            View commands
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Quick start</h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Get up and running with ImgTool in minutes
+  </p>
+
+  <Steps>
+    <Step title="Build the project">
+      Clone the repository and build using CMake:
+      
+      ```bash
+      git clone https://github.com/100495954/imgtool.git
+      cd imgtool
+      cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release
+      cmake --build build-release
+      ```
+    </Step>
+
+    <Step title="Run your first command">
+      Compress a PPM image using the AOS implementation:
+      
+      ```bash
+      ./build-release/imtool-aos/imtool-aos input/image.ppm output/compressed.cppm compress
+      ```
+      
+      Or use the SOA implementation for comparison:
+      
+      ```bash
+      ./build-release/imtool-soa/imtool-soa input/image.ppm output/compressed.cppm compress
+      ```
+    </Step>
+
+    <Step title="Explore other operations">
+      ImgTool supports multiple image processing operations. Resize an image:
+      
+      ```bash
+      ./build-release/imtool-aos/imtool-aos input/image.ppm output/resized.ppm resize 800 600
+      ```
+      
+      <Note>
+        Both `imtool-aos` and `imtool-soa` variants support the same operations with identical outputs, allowing for direct performance comparison.
+      </Note>
+    </Step>
+  </Steps>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Explore by operation</h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    Discover what you can do with ImgTool
+  </p>
+
+  <CardGroup cols={2}>
+    <Card title="Compress" icon="file-zipper" href="/commands/compress">
+      Reduce image file size with color palette optimization and frequency analysis
+    </Card>
+    <Card title="Resize" icon="expand" href="/commands/resize">
+      Scale images using bilinear interpolation for smooth results
+    </Card>
+    <Card title="Maxlevel" icon="chart-line" href="/commands/maxlevel">
+      Normalize color ranges and extend bit depth for enhanced contrast
+    </Card>
+    <Card title="Cutfreq" icon="filter" href="/commands/cutfreq">
+      Filter low-frequency colors to create posterization effects
+    </Card>
+    <Card title="Info" icon="circle-info" href="/commands/info">
+      Display detailed image metadata and color statistics
+    </Card>
+    <Card title="Performance comparison" icon="gauge-high" href="/guides/performance-comparison">
+      Compare AOS vs SOA implementations with perf profiling
+    </Card>
+  </CardGroup>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Key features</h2>
+  <p className="text-base text-gray-600 dark:text-gray-400 mb-8">
+    What makes ImgTool unique
+  </p>
+
+  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+    <div className="p-6 rounded-xl border border-gray-200 dark:border-[#27272a] bg-gray-50 dark:bg-[#1a1d27]">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-[#2563eb]/10 dark:bg-[#2563eb]/20 flex items-center justify-center">
+          <svg className="w-6 h-6 text-[#2563eb]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Dual memory layouts</h3>
+      </div>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Compare Array of Structs (AOS) and Struct of Arrays (SOA) implementations to understand cache performance and memory access patterns.
+      </p>
+    </div>
+
+    <div className="p-6 rounded-xl border border-gray-200 dark:border-[#27272a] bg-gray-50 dark:bg-[#1a1d27]">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-[#2563eb]/10 dark:bg-[#2563eb]/20 flex items-center justify-center">
+          <svg className="w-6 h-6 text-[#2563eb]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">High performance</h3>
+      </div>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Built with C++20 and optimized for modern processors with vectorization-friendly algorithms and efficient data structures.
+      </p>
+    </div>
+
+    <div className="p-6 rounded-xl border border-gray-200 dark:border-[#27272a] bg-gray-50 dark:bg-[#1a1d27]">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-[#2563eb]/10 dark:bg-[#2563eb]/20 flex items-center justify-center">
+          <svg className="w-6 h-6 text-[#2563eb]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Performance profiling</h3>
+      </div>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Integrated with Linux perf for detailed performance analysis including energy consumption, cache behavior, and memory bandwidth.
+      </p>
+    </div>
+
+    <div className="p-6 rounded-xl border border-gray-200 dark:border-[#27272a] bg-gray-50 dark:bg-[#1a1d27]">
+      <div className="flex items-center gap-3 mb-3">
+        <div className="flex-shrink-0 w-10 h-10 rounded-lg bg-[#2563eb]/10 dark:bg-[#2563eb]/20 flex items-center justify-center">
+          <svg className="w-6 h-6 text-[#2563eb]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Comprehensive testing</h3>
+      </div>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Unit tests with Google Test and functional tests ensure correctness across both implementations with identical outputs.
+      </p>
+    </div>
+  </div>
+</div>
+
+<div className="mt-16 mb-16 max-w-5xl mx-auto px-6">
+  <div className="rounded-2xl bg-gradient-to-r from-[#1e40af] to-[#2563eb] p-8 md:p-12">
+    <div className="max-w-3xl">
+      <h2 className="text-3xl font-bold text-white mb-4">
+        Ready to start processing images?
+      </h2>
+      <p className="text-lg text-blue-100 mb-6">
+        Follow our quickstart guide to build ImgTool and run your first image processing command.
+      </p>
+      <a
+        href="/quickstart"
+        className="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-lg text-[#2563eb] bg-white hover:bg-blue-50 transition-colors"
+      >
+        Get started
+      </a>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,345 @@
+---
+title: 'File I/O'
+description: 'Binary file I/O utilities for reading and writing image data'
+---
+
+## Overview
+
+The `binario` namespace provides template functions for binary data I/O operations, primarily used for reading and writing PPM and CPPM image formats.
+
+## Functions
+
+### read_binary
+
+Reads binary data of a specified type from an input stream.
+
+```cpp
+template<typename T>
+T read_binary(std::istream & stream)
+```
+
+<ParamField path="stream" type="std::istream&" required>
+  Input stream to read from
+</ParamField>
+
+<ResponseField name="return" type="T">
+  The value read from the stream
+</ResponseField>
+
+**Throws**: `std::runtime_error` if reading fails
+
+#### Example
+
+<CodeGroup>
+```cpp Reading 8-bit values
+#include "common/binario.hpp"
+#include <fstream>
+
+std::ifstream file("image.ppm", std::ios::binary);
+unsigned char red = binario::read_binary<unsigned char>(file);
+unsigned char green = binario::read_binary<unsigned char>(file);
+unsigned char blue = binario::read_binary<unsigned char>(file);
+```
+
+```cpp Reading 16-bit values
+#include "common/binario.hpp"
+#include <fstream>
+
+std::ifstream file("image.cppm", std::ios::binary);
+unsigned short red = binario::read_binary<unsigned short>(file);
+unsigned short green = binario::read_binary<unsigned short>(file);
+unsigned short blue = binario::read_binary<unsigned short>(file);
+```
+</CodeGroup>
+
+---
+
+### write_birary
+
+Writes binary data of a specified type to an output stream.
+
+```cpp
+template<typename T>
+void write_birary(std::ostream& stream, const T& value)
+```
+
+<ParamField path="stream" type="std::ostream&" required>
+  Output stream to write to
+</ParamField>
+
+<ParamField path="value" type="const T&" required>
+  Value to write to the stream
+</ParamField>
+
+#### Example
+
+<CodeGroup>
+```cpp Writing pixel data
+#include "common/binario.hpp"
+#include <fstream>
+
+std::ofstream file("output.ppm", std::ios::binary);
+unsigned char red = 255;
+unsigned char green = 128;
+unsigned char blue = 64;
+
+binario::write_birary(file, red);
+binario::write_birary(file, green);
+binario::write_birary(file, blue);
+```
+
+```cpp Writing 16-bit data
+#include "common/binario.hpp"
+#include <fstream>
+
+std::ofstream file("output.cppm", std::ios::binary);
+unsigned short red = 65535;
+unsigned short green = 32768;
+unsigned short blue = 16384;
+
+binario::write_birary(file, red);
+binario::write_birary(file, green);
+binario::write_birary(file, blue);
+```
+</CodeGroup>
+
+---
+
+## Image Loading Functions
+
+### loadPhoto (SOA)
+
+Loads a PPM image file using Structure of Arrays representation.
+
+```cpp
+bool loadPhoto(const std::string& filename, Photo& photo)
+```
+
+<ParamField path="filename" type="const std::string&" required>
+  Path to the input PPM file
+</ParamField>
+
+<ParamField path="photo" type="Photo&" required>
+  Photo object to store the loaded image data (SOA format)
+</ParamField>
+
+<ResponseField name="return" type="bool">
+  Returns `true` if the image was loaded successfully, `false` otherwise
+</ResponseField>
+
+**Location**: `imgsoa/imagesoa.cpp:268`
+
+#### Example
+
+```cpp
+#include "imgsoa/imagesoa.hpp"
+
+imgsoa::Photo photo;
+if (imgsoa::loadPhoto("input.ppm", photo)) {
+    std::cout << "Image loaded: " << photo.width << "x" << photo.height << std::endl;
+} else {
+    std::cerr << "Failed to load image" << std::endl;
+}
+```
+
+---
+
+### loadPhoto (AOS)
+
+Loads a PPM image file using Array of Structures representation.
+
+```cpp
+bool loadPhoto(Photo& photo, const std::string& filename)
+```
+
+<ParamField path="photo" type="Photo&" required>
+  Photo object to store the loaded image data (AOS format)
+</ParamField>
+
+<ParamField path="filename" type="const std::string&" required>
+  Path to the input PPM file
+</ParamField>
+
+<ResponseField name="return" type="bool">
+  Returns `true` if the image was loaded successfully, `false` otherwise
+</ResponseField>
+
+**Location**: `imgaos/imageaos.cpp:285`
+
+---
+
+### savePhoto (SOA)
+
+Saves a PPM image file from Structure of Arrays representation.
+
+```cpp
+bool savePhoto(const std::string& filename, const Photo& photo)
+```
+
+<ParamField path="filename" type="const std::string&" required>
+  Path to the output PPM file
+</ParamField>
+
+<ParamField path="photo" type="const Photo&" required>
+  Photo object containing the image data to save (SOA format)
+</ParamField>
+
+<ResponseField name="return" type="bool">
+  Returns `true` if the image was saved successfully, `false` otherwise
+</ResponseField>
+
+**Location**: `imgsoa/imagesoa.cpp:313`
+
+---
+
+### savePhoto (AOS)
+
+Saves a PPM image file from Array of Structures representation.
+
+```cpp
+bool savePhoto(const Photo& photo, const std::string& filename)
+```
+
+<ParamField path="photo" type="const Photo&" required>
+  Photo object containing the image data to save (AOS format)
+</ParamField>
+
+<ParamField path="filename" type="const std::string&" required>
+  Path to the output PPM file
+</ParamField>
+
+<ResponseField name="return" type="bool">
+  Returns `true` if the image was saved successfully, `false` otherwise
+</ResponseField>
+
+**Location**: `imgaos/imageaos.cpp:326`
+
+---
+
+### readHeader
+
+Reads the PPM file header and validates the format.
+
+```cpp
+bool readHeader(std::ifstream& file, Photo& photo)
+```
+
+<ParamField path="file" type="std::ifstream&" required>
+  Input file stream positioned at the start of the header
+</ParamField>
+
+<ParamField path="photo" type="Photo&" required>
+  Photo object to store header information (magic number, width, height, max color value)
+</ParamField>
+
+<ResponseField name="return" type="bool">
+  Returns `true` if the header was read successfully and format is P6, `false` otherwise
+</ResponseField>
+
+**Location**: `imgsoa/imagesoa.cpp:293`
+
+#### Format Details
+
+The function reads:
+- Magic number (must be "P6" for binary PPM)
+- Image width
+- Image height
+- Maximum color value (determines 8-bit or 16-bit encoding)
+
+---
+
+### readPixels (SOA)
+
+Reads pixel data from a PPM file into Structure of Arrays format.
+
+```cpp
+template<typename T>
+void readPixels(std::ifstream& file, size_t pixelCount, Photo &photo)
+```
+
+<ParamField path="file" type="std::ifstream&" required>
+  Input file stream positioned at pixel data
+</ParamField>
+
+<ParamField path="pixelCount" type="size_t" required>
+  Total number of pixels to read (width × height)
+</ParamField>
+
+<ParamField path="photo" type="Photo&" required>
+  Photo object with pre-allocated red, green, and blue vectors
+</ParamField>
+
+**Template Parameters**:
+- `T`: Data type for pixel values (`unsigned char` for 8-bit, `unsigned short` for 16-bit)
+
+**Location**: `imgsoa/imagesoa.cpp:305`
+
+#### Example
+
+```cpp
+size_t pixelCount = photo.width * photo.height;
+photo.red.resize(pixelCount);
+photo.green.resize(pixelCount);
+photo.blue.resize(pixelCount);
+
+if (photo.maxColorValue <= 255) {
+    readPixels<unsigned char>(file, pixelCount, photo);
+} else {
+    readPixels<unsigned short>(file, pixelCount, photo);
+}
+```
+
+---
+
+### readPixels (AOS)
+
+Reads pixel data from a PPM file into Array of Structures format.
+
+```cpp
+template<typename T>
+void readPixels(std::ifstream& file, Photo& photo)
+```
+
+<ParamField path="file" type="std::ifstream&" required>
+  Input file stream positioned at pixel data
+</ParamField>
+
+<ParamField path="photo" type="Photo&" required>
+  Photo object with pre-allocated pixels vector
+</ParamField>
+
+**Template Parameters**:
+- `T`: Data type for pixel values (`unsigned char` for 8-bit, `unsigned short` for 16-bit)
+
+**Location**: `imgaos/imageaos.cpp:318`
+
+---
+
+## PPM Format Support
+
+### Format Types
+
+<ResponseField name="P6" type="Binary PPM">
+  Binary format with RGB pixel data
+</ResponseField>
+
+### Color Depth
+
+- **8-bit**: Max color value ≤ 255 (uses `unsigned char`)
+- **16-bit**: Max color value > 255 (uses `unsigned short`)
+
+### File Structure
+
+1. Magic number ("P6")
+2. Width and height (whitespace-separated integers)
+3. Maximum color value
+4. Binary pixel data (R, G, B sequence)
+
+#### Example PPM Header
+
+```text
+P6
+1920 1080
+255
+[binary pixel data follows]
+```
