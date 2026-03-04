@@ -1,0 +1,112 @@
+{
+  "projectType": "cli-tool",
+  "projectName": "ImgTool",
+  "projectDescription": "High-performance C++ image processing tool with dual memory layout implementations (AOS vs SOA) for PPM format manipulation.",
+  "theme": "aspen",
+  "primaryColor": "#2563eb",
+  "lightColor": "#60a5fa",
+  "darkColor": "#1e40af",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "quickstart"
+            ]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": [
+              "concepts/memory-layouts",
+              "concepts/aos-vs-soa",
+              "concepts/ppm-format"
+            ]
+          },
+          {
+            "group": "Commands",
+            "pages": [
+              "commands/overview",
+              "commands/compress",
+              "commands/resize",
+              "commands/maxlevel",
+              "commands/cutfreq",
+              "commands/info"
+            ]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/building",
+              "guides/performance-comparison",
+              "guides/testing"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "AOS Implementation",
+            "pages": [
+              "api/aos/image-class",
+              "api/aos/pixel-struct",
+              "api/aos/operations"
+            ]
+          },
+          {
+            "group": "SOA Implementation",
+            "pages": [
+              "api/soa/image-class",
+              "api/soa/structures",
+              "api/soa/operations"
+            ]
+          },
+          {
+            "group": "Common Utilities",
+            "pages": [
+              "api/common/file-io",
+              "api/common/argument-parsing"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Dual memory layout implementations (Array of Structs vs Struct of Arrays)",
+    "Image compression with color palette optimization",
+    "Bilinear interpolation resize operations",
+    "Color normalization and frequency filtering",
+    "Performance profiling with perf integration",
+    "Comprehensive unit and functional testing"
+  ],
+  "publicApiSurface": [
+    "imtool-aos compress <input> <output>",
+    "imtool-aos resize <input> <output> <width> <height>",
+    "imtool-aos maxlevel <input> <output> <level>",
+    "imtool-aos cutfreq <input> <output> <threshold>",
+    "imtool-aos info <input> <output>",
+    "imtool-soa compress <input> <output>",
+    "imtool-soa resize <input> <output> <width> <height>",
+    "imtool-soa maxlevel <input> <output> <level>",
+    "imtool-soa cutfreq <input> <output> <threshold>",
+    "imtool-soa info <input> <output>",
+    "imgaos::Image",
+    "imgaos::Pixel",
+    "imgaos::compress()",
+    "imgaos::resizeImage()",
+    "imgaos::maxlevel()",
+    "imgaos::cutfreq()",
+    "imgsoa::ImageSOA",
+    "imgsoa::compress()",
+    "imgsoa::resizeImage()",
+    "imgsoa::maxlevel()",
+    "imgsoa::cutfreq()"
+  ]
+}
